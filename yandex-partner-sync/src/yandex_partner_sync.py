@@ -13,6 +13,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from partner_sync_common.sheet_dates import ensure_date_rows, first_missing_date
+
 ROOT = Path(__file__).resolve().parents[1]
 ENDPOINT = "https://distribution.yandex.net/api/v2/constructor_statistics/api_table/?lang=en"
 SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
@@ -33,6 +36,12 @@ def digest(value):
 
 def parse_day(value):
     text = str(value).strip().split(",", 1)[0]
+    try:
+        serial = float(text)
+        if 20000 <= serial <= 80000:
+            return (datetime(1899, 12, 30) + timedelta(days=serial)).date()
+    except ValueError:
+        pass
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d.%m.%Y"):
         try:
             return datetime.strptime(text, fmt).date()
@@ -168,7 +177,7 @@ def column_name(index):
 
 
 def sheet_rows(service):
-    values = service.spreadsheets().values().get(spreadsheetId=SHEET_ID, range=f"'{SHEET_NAME}'!A1:Z1000", valueRenderOption="FORMATTED_VALUE").execute().get("values", [])
+    values = service.spreadsheets().values().get(spreadsheetId=SHEET_ID, range=f"'{SHEET_NAME}'!A1:ZZ10000", valueRenderOption="UNFORMATTED_VALUE", dateTimeRenderOption="SERIAL_NUMBER").execute().get("values", [])
     if not values:
         raise RuntimeError("target sheet is empty")
     headers = values[0]
@@ -200,7 +209,7 @@ def first_missing_day(headers, rows, profiles, cutoff):
             for header in profile["target_headers"]:
                 if existing_value(row, headers.index(header)) in ("", None):
                     missing.append(day)
-    return min(missing) if missing else cutoff
+    return min([*missing, first_missing_date(rows, cutoff)])
 
 def planned_updates(headers, rows, profile_rows, profile, allow_overwrite):
     updates, conflicts = [], []
@@ -246,13 +255,16 @@ def main():
     start = parse_day(args.start_date) if args.start_date else first_missing_day(headers, rows, profiles, end)
     if start > end:
         raise RuntimeError("start date is after end date")
+    source_by_profile = {profile["profile_id"]: fetch_daily(profile, start, end, token) for profile in profiles}
+    date_rows_added = ensure_date_rows(service, SHEET_ID, SHEET_NAME, rows, end)
+    if date_rows_added:
+        headers, rows = sheet_rows(service)
     updates = []
     for profile in profiles:
-        source_rows = fetch_daily(profile, start, end, token)
-        updates.extend(planned_updates(headers, rows, source_rows, profile, args.allow_overwrite))
+        updates.extend(planned_updates(headers, rows, source_by_profile[profile["profile_id"]], profile, args.allow_overwrite))
     if updates:
         service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
-    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "updated_cells": len(updates), "overwrite": args.allow_overwrite}, ensure_ascii=False))
+    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "date_rows_added": [day.isoformat() for day in date_rows_added], "updated_cells": len(updates), "overwrite": args.allow_overwrite}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

@@ -12,6 +12,9 @@ from zoneinfo import ZoneInfo
 
 import pdfplumber
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from partner_sync_common.sheet_dates import ensure_date_rows, first_missing_date
+
 SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 SHEET_NAME = "合作方返回数据"
 ORIGINAL_SENDER = "no-reply-powerbi@microsoft.com"
@@ -24,6 +27,12 @@ SURFACES = {
 
 def parse_day(value):
     text = str(value).strip().split(",", 1)[0]
+    try:
+        serial = float(text)
+        if 20000 <= serial <= 80000:
+            return (datetime(1899, 12, 30) + timedelta(days=serial)).date()
+    except ValueError:
+        pass
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d.%m.%Y"):
         try:
             return datetime.strptime(text, fmt).date()
@@ -167,7 +176,7 @@ def col_name(index):
 
 
 def get_sheet(service):
-    values = service.spreadsheets().values().get(spreadsheetId=SHEET_ID, range=f"'{SHEET_NAME}'!A1:Z1000", valueRenderOption="FORMATTED_VALUE").execute().get("values", [])
+    values = service.spreadsheets().values().get(spreadsheetId=SHEET_ID, range=f"'{SHEET_NAME}'!A1:ZZ10000", valueRenderOption="UNFORMATTED_VALUE", dateTimeRenderOption="SERIAL_NUMBER").execute().get("values", [])
     if not values:
         raise RuntimeError("target sheet is empty")
     required = ["日期", *(h for spec in SURFACES.values() for h in spec["headers"])]
@@ -189,7 +198,7 @@ def value_at(row, column):
 
 def first_missing(headers, rows, cutoff):
     days = [day for day, row in rows.items() if day <= cutoff and any(value_at(row, headers.index(h)) in ("", None) for spec in SURFACES.values() for h in spec["headers"])]
-    return min(days) if days else cutoff
+    return min([*days, first_missing_date(rows, cutoff)])
 
 
 def updates_for(headers, rows, surface, source):
@@ -222,12 +231,16 @@ def main():
     if start > end:
         raise RuntimeError("start date is after end date")
     gmail = gmail_service(secrets["GMAIL_OAUTH_CLIENT_JSON"], secrets["GMAIL_REFRESH_TOKEN"])
+    sources = {surface: source_rows(gmail, surface, start, end) for surface in SURFACES}
+    date_rows_added = ensure_date_rows(sheets, SHEET_ID, SHEET_NAME, target_rows, end)
+    if date_rows_added:
+        headers_row, target_rows = get_sheet(sheets)
     writes = []
-    for surface in SURFACES:
-        writes.extend(updates_for(headers_row, target_rows, surface, source_rows(gmail, surface, start, end)))
+    for surface, source in sources.items():
+        writes.extend(updates_for(headers_row, target_rows, surface, source))
     if writes:
         sheets.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": writes}).execute()
-    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "updated_cells": len(writes), "overwrite": args.allow_overwrite}, ensure_ascii=False))
+    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "date_rows_added": [day.isoformat() for day in date_rows_added], "updated_cells": len(writes), "overwrite": args.allow_overwrite}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

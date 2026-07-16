@@ -6,10 +6,14 @@ import os
 import re
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from partner_sync_common.sheet_dates import ensure_date_rows
 
 
 SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
@@ -127,7 +131,7 @@ def sheets_service(service_json):
 
 
 def get_sheet(service):
-    values = service.spreadsheets().values().get(spreadsheetId=SHEET_ID, range=f"'{SHEET_NAME}'!A1:Z1000", valueRenderOption="UNFORMATTED_VALUE").execute().get("values", [])
+    values = service.spreadsheets().values().get(spreadsheetId=SHEET_ID, range=f"'{SHEET_NAME}'!A1:ZZ10000", valueRenderOption="UNFORMATTED_VALUE", dateTimeRenderOption="SERIAL_NUMBER").execute().get("values", [])
     if not values or "日期" not in values[0] or any(header not in values[0] for header in TARGET_HEADERS) or len(values[0]) != len(set(values[0])):
         raise RuntimeError("target sheet headers are missing or duplicated")
     rows = {}
@@ -191,10 +195,13 @@ def main():
         source = parse_report(fetch_report(session), cutoff)
     service = sheets_service(service_json)
     headers, target_rows = get_sheet(service)
+    date_rows_added = ensure_date_rows(service, SHEET_ID, SHEET_NAME, target_rows, cutoff)
+    if date_rows_added:
+        headers, target_rows = get_sheet(service)
     updates, overwrites = updates_for(headers, target_rows, source, args.allow_overwrite)
     if updates:
         service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
-    print(json.dumps({"source_days": sorted(day.isoformat() for day in source), "updated_cells": len(updates), "overwrites": overwrites}, ensure_ascii=False))
+    print(json.dumps({"source_days": sorted(day.isoformat() for day in source), "date_rows_added": [day.isoformat() for day in date_rows_added], "updated_cells": len(updates), "overwrites": overwrites}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
