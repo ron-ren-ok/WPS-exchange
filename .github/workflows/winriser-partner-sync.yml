@@ -1,0 +1,34 @@
+name: Winriser partner sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      end_date:
+        description: "End date (YYYY-MM-DD); defaults to yesterday Beijing time"
+        required: false
+        type: string
+  schedule:
+    - cron: "0 10 * * 1-5"
+      timezone: "Asia/Shanghai"
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: winriser-partner-sync
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: >-
+          python src/winriser_partner_sync.py
+          ${{ inputs.end_date && format('--end-date {0}', inputs.end_date) || '' }}
+        env:
+          GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
+          WINRISER_LOGIN_SECRET: ${{ secrets.WINRISER_LOGIN_SECRET }}
