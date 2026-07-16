@@ -1,17 +1,31 @@
 {
-  "profile_id": "yandex-popup-ru-1052697-1158318",
-  "version": 1,
-  "status": "active",
-  "surface": "换量弹窗",
-  "template": "511e6aeea7522e35636341b391106a09",
-  "country_id": "225",
-  "country_name": "Russia",
-  "pack_ids": [1052697, 1158318],
-  "target_headers": ["Yandex换量弹窗新增", "Yandex换量弹窗血量"],
-  "filter_fingerprint": "d66ec1daec3ed4d601c7ca90b2943b78159496fb9f9bc2841418c5ce90924458",
-  "template_sha256": "4a551318a4edba8c41f0331e36c6c191f2733d8e318445cf048156283e35ad68",
-  "reconciliation_samples": [
-    {"date": "2026-07-14", "new_users": 178, "blood_volume": 178},
-    {"date": "2026-07-13", "new_users": 193, "blood_volume": 193}
-  ]
+    "profile_id":  "yandex-popup-ru-1052697-1158318",
+    "version":  1,
+    "status":  "active",
+    "surface":  "换量弹窗",
+    "template":  "511e6aeea7522e35636341b391106a09",
+    "country_id":  "225",
+    "country_name":  "Russia",
+    "pack_ids":  [
+                     1052697,
+                     1158318
+                 ],
+    "target_headers":  [
+                           "Yandex换量弹窗新增",
+                           "Yandex换量弹窗血量"
+                       ],
+    "filter_fingerprint":  "d66ec1daec3ed4d601c7ca90b2943b78159496fb9f9bc2841418c5ce90924458",
+    "template_sha256":  "99d3447b5ee3a6afae4a1deb002a3b2435ed0e75bf35a13de622a94ba50aa1e9",
+    "reconciliation_samples":  [
+                                   {
+                                       "date":  "2026-07-14",
+                                       "new_users":  178,
+                                       "blood_volume":  178
+                                   },
+                                   {
+                                       "date":  "2026-07-13",
+                                       "new_users":  193,
+                                       "blood_volume":  193
+                                   }
+                               ]
 }

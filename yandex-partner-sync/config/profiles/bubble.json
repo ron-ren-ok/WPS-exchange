@@ -1,14 +1,25 @@
 {
-  "profile_id": "yandex-bubble-ru-1157518",
-  "version": 1,
-  "status": "active",
-  "surface": "气泡",
-  "template": "25796325cf97ef0dedbde50d39338207",
-  "country_id": "225",
-  "country_name": "Russia",
-  "pack_ids": [1157518],
-  "target_headers": ["Yandex气泡新增", "Yandex气泡血量"],
-  "filter_fingerprint": "9325d659abec94f830d304b6e4a47ee6f2c62219be2c56deb86b879472b34b5d",
-  "template_sha256": "4a551318a4edba8c41f0331e36c6c191f2733d8e318445cf048156283e35ad68",
-  "reconciliation_samples": [{"date": "2026-07-14", "new_users": 158, "blood_volume": 158}]
+    "profile_id":  "yandex-bubble-ru-1157518",
+    "version":  1,
+    "status":  "active",
+    "surface":  "气泡",
+    "template":  "25796325cf97ef0dedbde50d39338207",
+    "country_id":  "225",
+    "country_name":  "Russia",
+    "pack_ids":  [
+                     1157518
+                 ],
+    "target_headers":  [
+                           "Yandex气泡新增",
+                           "Yandex气泡血量"
+                       ],
+    "filter_fingerprint":  "9325d659abec94f830d304b6e4a47ee6f2c62219be2c56deb86b879472b34b5d",
+    "template_sha256":  "99d3447b5ee3a6afae4a1deb002a3b2435ed0e75bf35a13de622a94ba50aa1e9",
+    "reconciliation_samples":  [
+                                   {
+                                       "date":  "2026-07-14",
+                                       "new_users":  158,
+                                       "blood_volume":  158
+                                   }
+                               ]
 }

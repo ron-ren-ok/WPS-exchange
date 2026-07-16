@@ -58,7 +58,7 @@ def load_profile(name):
     if digest(contract) != profile["filter_fingerprint"]:
         raise RuntimeError(f"{name} profile fingerprint mismatch")
     template = ROOT / "config" / "yandex-api-blocks-template.json"
-    if hashlib.sha256(template.read_bytes()).hexdigest() != profile["template_sha256"]:
+    if digest(load_json(template)) != profile["template_sha256"]:
         raise RuntimeError("Yandex API template fingerprint mismatch")
     return profile
 
