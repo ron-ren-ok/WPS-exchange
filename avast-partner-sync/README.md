@@ -15,3 +15,12 @@
 - `GMAIL_REFRESH_TOKEN`：以有 Avast 邮件的 Gmail 账号授权 `gmail.readonly` 后取得的 refresh token。
 
 凭证仅存于 GitHub Secrets，绝不提交到仓库。工作流在每个工作日北京时间 10:00 运行，也可在 Actions 页面手动补数。
+## 首次 Gmail 授权
+
+先将下载的 OAuth JSON 全文保存到 GitHub Secret `GMAIL_OAUTH_CLIENT_JSON`。然后在本机运行一次：
+
+```powershell
+python scripts/create_gmail_refresh_token.py --client-json "下载的 OAuth JSON 文件路径"
+```
+
+浏览器中必须登录 `54lingbai@gmail.com` 并确认只读 Gmail 授权。终端只会输出一个 refresh token；将其保存到 GitHub Secret `GMAIL_REFRESH_TOKEN`，不要发送或提交该值。
