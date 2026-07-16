@@ -20,4 +20,4 @@ Yandex 换量弹窗与气泡数据同步项目，不依赖 AI 或本机浏览器
 
 服务账号必须已被授予目标 Google Sheet 的编辑权限。凭证绝不提交到仓库。
 
-手动补数时，可在 Actions 页面填写 `start_date`、`end_date`。若确认要以 Yandex API 值纠正已存在的不同数据，才开启 `allow_overwrite`。
+手动补数时，可在 Actions 页面填写 `start_date`、`end_date`。已验证的 Yandex API 是这四个 Yandex 专属表头的权威来源，任务会自动覆盖旧值，并在日志中记录。
