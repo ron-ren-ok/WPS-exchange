@@ -142,14 +142,18 @@ def fetch_daily(profile, start, end, token):
 
 
 def validate_source_coverage(totals, start, end):
-    """Allow unavailable leading history, but never allow gaps after data starts."""
+    """Complete zero-activity days while keeping unavailable leading history explicit."""
     if not totals:
         raise RuntimeError("Yandex source returned no data")
     source_start = min(totals)
     expected = {source_start + timedelta(days=index) for index in range((end - source_start).days + 1)}
-    missing = expected - set(totals)
+    missing = sorted(expected - set(totals))
+    # The Yandex daily table omits dates on which every requested metric is 0.
+    # Preserve those calendar dates as explicit zero values for Sheets.
     if missing:
-        raise RuntimeError(f"Yandex source coverage gap: {sorted(missing)}")
+        print(f"Yandex API omitted {len(missing)} zero-activity day(s); writing 0 / 0 for them.")
+        for day in missing:
+            totals[day] = [0, 0]
     return source_start
 
 

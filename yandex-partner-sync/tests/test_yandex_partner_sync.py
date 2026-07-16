@@ -19,8 +19,9 @@ class SyncTests(unittest.TestCase):
         end = date(2026, 2, 13)
         totals = {date(2026, 2, 11): [1, 1], date(2026, 2, 12): [1, 1], date(2026, 2, 13): [1, 1]}
         self.assertEqual(SYNC.validate_source_coverage(totals, start, end), date(2026, 2, 11))
-        with self.assertRaisesRegex(RuntimeError, "coverage gap"):
-            SYNC.validate_source_coverage({date(2026, 2, 11): [1, 1], date(2026, 2, 13): [1, 1]}, start, end)
+        with_gap = {date(2026, 2, 11): [1, 1], date(2026, 2, 13): [1, 1]}
+        SYNC.validate_source_coverage(with_gap, start, end)
+        self.assertEqual(with_gap[date(2026, 2, 12)], [0, 0])
     def test_dynamic_column_names(self):
         self.assertEqual(SYNC.column_name(0), "A")
         self.assertEqual(SYNC.column_name(25), "Z")
