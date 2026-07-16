@@ -121,7 +121,7 @@ def sheets_service(service_json):
 
 
 def get_sheet(service):
-    values = service.spreadsheets().values().get(spreadsheetId=SHEET_ID, range=f"'{SHEET_NAME}'!A1:Z1000", valueRenderOption="FORMATTED_VALUE").execute().get("values", [])
+    values = service.spreadsheets().values().get(spreadsheetId=SHEET_ID, range=f"'{SHEET_NAME}'!A1:Z1000", valueRenderOption="UNFORMATTED_VALUE").execute().get("values", [])
     if not values or "日期" not in values[0] or any(header not in values[0] for header in TARGET_HEADERS) or len(values[0]) != len(set(values[0])):
         raise RuntimeError("target sheet headers are missing or duplicated")
     rows = {}
@@ -138,6 +138,13 @@ def value_at(row, column):
     return row["values"][column] if column < len(row["values"]) else ""
 
 
+def values_match(current, wanted):
+    try:
+        return abs(float(current) - float(wanted)) < 1e-9
+    except (TypeError, ValueError):
+        return str(current).replace(",", "") == str(wanted)
+
+
 def updates_for(headers, target_rows, source_rows):
     updates, conflicts = [], []
     for day, metrics in sorted(source_rows.items()):
@@ -148,7 +155,7 @@ def updates_for(headers, target_rows, source_rows):
         for header, key in zip(TARGET_HEADERS, ("new_users", "blood_volume")):
             column, wanted = headers.index(header), metrics[key]
             current = value_at(row, column)
-            if current not in ("", None) and str(current).replace(",", "") != str(wanted):
+            if current not in ("", None) and not values_match(current, wanted):
                 conflicts.append(f"{day} {header}: sheet={current}, source={wanted}")
             elif current in ("", None):
                 updates.append({"range": f"'{SHEET_NAME}'!{col_name(column)}{row['row']}", "values": [[wanted]]})
