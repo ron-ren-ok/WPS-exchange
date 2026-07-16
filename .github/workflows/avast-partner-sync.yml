@@ -1,0 +1,41 @@
+name: Avast partner sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Start date (YYYY-MM-DD); defaults to earliest missing Avast date"
+        required: false
+        type: string
+      end_date:
+        description: "End date (YYYY-MM-DD); defaults to yesterday Beijing time"
+        required: false
+        type: string
+  schedule:
+    - cron: "0 10 * * 1-5"
+      timezone: "Asia/Shanghai"
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: avast-partner-sync
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: >-
+          python src/avast_partner_sync.py
+          ${{ inputs.start_date && format('--start-date {0}', inputs.start_date) || '' }}
+          ${{ inputs.end_date && format('--end-date {0}', inputs.end_date) || '' }}
+          --allow-overwrite
+        env:
+          GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
+          GMAIL_OAUTH_CLIENT_JSON: ${{ secrets.GMAIL_OAUTH_CLIENT_JSON }}
+          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
