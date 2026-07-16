@@ -1,0 +1,45 @@
+name: Yandex partner sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Start date (YYYY-MM-DD); defaults to yesterday"
+        required: false
+        type: string
+      end_date:
+        description: "End date (YYYY-MM-DD); defaults to yesterday"
+        required: false
+        type: string
+      allow_overwrite:
+        description: "Allow verified Yandex values to replace nonblank differences"
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: "0 10 * * 1-5"
+      timezone: "Asia/Shanghai"
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: yandex-partner-sync
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: >-
+          python src/yandex_partner_sync.py
+          ${{ inputs.start_date && format('--start-date {0}', inputs.start_date) || '' }}
+          ${{ inputs.end_date && format('--end-date {0}', inputs.end_date) || '' }}
+          ${{ inputs.allow_overwrite && '--allow-overwrite' || '' }}
+        env:
+          YANDEX_DISTRIBUTION_TOKEN: ${{ secrets.YANDEX_DISTRIBUTION_TOKEN }}
+          GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}

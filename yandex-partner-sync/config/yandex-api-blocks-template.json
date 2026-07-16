@@ -1,0 +1,2368 @@
+[
+    {
+        "id":  "filters",
+        "fields":  [
+                       {
+                           "id":  "templates",
+                           "label":  "",
+                           "choices":  [
+                                           {
+                                               "id":  "4693",
+                                               "label":  "1052697+1158318（新） RU 换量弹窗",
+                                               "value":  "511e6aeea7522e35636341b391106a09"
+                                           },
+                                           {
+                                               "id":  "4691",
+                                               "label":  "1157518 RU 气泡",
+                                               "value":  "25796325cf97ef0dedbde50d39338207"
+                                           },
+                                           {
+                                               "id":  "4961",
+                                               "label":  "1158318（新包） RU 换量弹窗",
+                                               "value":  "e329418f00b8b736b4e2032f17aa0a39"
+                                           },
+                                           {
+                                               "id":  "5025",
+                                               "label":  "yandex安卓端",
+                                               "value":  "4896dda002af4efb2d8b9c63e0dc1723"
+                                           },
+                                           {
+                                               "id":  "4686",
+                                               "label":  "上月总新增（俄）",
+                                               "value":  "f92abcf62b2b6f6d175a9ca32a684fce"
+                                           },
+                                           {
+                                               "id":  "4674",
+                                               "label":  "俄罗斯地区（区分packid）",
+                                               "value":  "724f2efe46d3164aa697cdc7c66ea561"
+                                           }
+                                       ],
+                           "width":  null,
+                           "hide":  false,
+                           "value":  null,
+                           "type":  "select_with_edit"
+                       },
+                       {
+                           "label":  "",
+                           "value":  "this_month",
+                           "id":  "period",
+                           "type":  "multidaterange_with_options"
+                       },
+                       {
+                           "label":  "",
+                           "id":  "compare_period",
+                           "value":  null,
+                           "type":  "comparewithprevious"
+                       },
+                       {
+                           "id":  "detalization",
+                           "choices":  [
+                                           {
+                                               "id":  "1",
+                                               "label":  "By days",
+                                               "slug":  "by_days"
+                                           },
+                                           {
+                                               "id":  "2",
+                                               "label":  "By weeks",
+                                               "slug":  "by_weeks"
+                                           },
+                                           {
+                                               "id":  "3",
+                                               "label":  "By months",
+                                               "slug":  "by_months"
+                                           },
+                                           {
+                                               "id":  "4",
+                                               "label":  "By quarters",
+                                               "slug":  "by_quarters"
+                                           },
+                                           {
+                                               "id":  "5",
+                                               "label":  "By years",
+                                               "slug":  "by_years"
+                                           },
+                                           {
+                                               "id":  "6",
+                                               "label":  "Without detalization",
+                                               "slug":  "without_detalization"
+                                           }
+                                       ],
+                           "value":  "1",
+                           "label":  "",
+                           "fallback_value":  1,
+                           "type":  "select"
+                       }
+                   ],
+        "label":  null
+    },
+    {
+        "id":  "param_controls",
+        "fields":  [
+                       {
+                           "value":  true,
+                           "id":  "hide_toggle",
+                           "type":  "hide_toggle"
+                       },
+                       {
+                           "id":  "save_template",
+                           "value":  null,
+                           "type":  "save_template"
+                       }
+                   ],
+        "label":  "Report parameters"
+    },
+    {
+        "id":  "service_selector",
+        "fields":  [
+                       {
+                           "id":  "default_field_pack_service_id",
+                           "hint":  "Click here to make a report for specific program",
+                           "choices":  [
+                                           {
+                                               "id":  "-1",
+                                               "label":  "All programs",
+                                               "slug":  "all"
+                                           },
+                                           {
+                                               "id":  "152",
+                                               "label":  "Promogiver",
+                                               "slug":  "promocode_service"
+                                           },
+                                           {
+                                               "id":  "158",
+                                               "label":  "Yandex - with Alice AI",
+                                               "slug":  "search_app"
+                                           },
+                                           {
+                                               "id":  "90",
+                                               "label":  "Yandex Browser, Search, and Applications",
+                                               "slug":  "desktop"
+                                           },
+                                           {
+                                               "id":  "157",
+                                               "label":  "Yandex Search",
+                                               "slug":  "search"
+                                           }
+                                       ],
+                           "value":  "-1",
+                           "width":  2,
+                           "label":  "Program",
+                           "type":  "select"
+                       }
+                   ],
+        "label":  "Programs"
+    },
+    {
+        "id":  "measures",
+        "fields":  [
+                       {
+                           "label":  "Metrics",
+                           "id":  "Metrics",
+                           "value":  [
+                                         {
+                                             "hint":  "",
+                                             "label":  "Activations",
+                                             "value":  false,
+                                             "id":  "mactivationstatistics_activations",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "Activations (portal bonus)",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_portal_bonus_activation",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "Activations (promocode)",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_activation",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "All searches",
+                                             "value":  false,
+                                             "id":  "searches",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "Clicks for Direct",
+                                             "value":  false,
+                                             "id":  "mrevenuesharestatistics_rs_clicks",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "Confirmed activation",
+                                             "value":  false,
+                                             "id":  "confirmed_activation",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "Confirmed installation",
+                                             "value":  false,
+                                             "id":  "confirmed_installation",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "Default changes",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_default_search",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "The number of times your users have installed the corresponding Yandex software",
+                                             "label":  "Installations",
+                                             "value":  true,
+                                             "id":  "msetupstatistics_setups",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "Installs (promocode)",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_install",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "KPI",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_default_search_kpi",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "New users",
+                                             "value":  true,
+                                             "id":  "promocode_statistics_paid_search",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "Payouts",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_promocode_paid",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "Quest activations",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_portal_bonus_registered",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "Success pages",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_registered",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "Yandex Browser Mobile activation",
+                                             "value":  false,
+                                             "id":  "yandex_browser_mobile_activation",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "Yandex Browser installations",
+                                             "value":  false,
+                                             "id":  "browser_installs_free",
+                                             "type":  "checkbox"
+                                         }
+                                     ],
+                           "type":  "collapse"
+                       },
+                       {
+                           "label":  "Partner remuneration",
+                           "id":  "partner_reward",
+                           "value":  [
+                                         {
+                                             "hint":  "",
+                                             "label":  "Partner reward",
+                                             "value":  true,
+                                             "id":  "default_fixed_partner_reward_metric",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for KPI",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_default_search_kpi_partner_wo_nds",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for RS Direct",
+                                             "value":  false,
+                                             "id":  "mrevenuesharestatistics_partner_wo_nds",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for Yandex Browser Mobile activation",
+                                             "value":  false,
+                                             "id":  "remuneration_for_yandex_browser_mobile_activation",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for activations",
+                                             "value":  false,
+                                             "id":  "mactivationstatistics_partner_wo_nds",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for activations (portal bonus)",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_portal_bonus_activation_partner_wo_nds",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for activations (promocode)",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_activation_partner_wo_nds",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for all searches",
+                                             "value":  false,
+                                             "id":  "for_searches",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for confirmed activation",
+                                             "value":  false,
+                                             "id":  "remuneration_for_confirmed_activation",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for confirmed installation",
+                                             "value":  false,
+                                             "id":  "remuneration_for_confirmed_installation",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for default change",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_default_search_partner_wo_nds",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for installations",
+                                             "value":  false,
+                                             "id":  "msetupstatistics_partner_wo_nds",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for installs (promocode)",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_install_partner_wo_nds",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for new users",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_paid_search_partner_wo_nds",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for payouts",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_promocode_paid_partner_wo_nds",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for quest activations",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_portal_bonus_registered_partner_wo_nds",
+                                             "type":  "checkbox"
+                                         },
+                                         {
+                                             "hint":  "",
+                                             "label":  "for success pages",
+                                             "value":  false,
+                                             "id":  "promocode_statistics_registered_partner_wo_nds",
+                                             "type":  "checkbox"
+                                         }
+                                     ],
+                           "type":  "collapse"
+                       }
+                   ],
+        "label":  null
+    },
+    {
+        "id":  "conditional_filters",
+        "fields":  [
+                       {
+                           "label":  "CLIDs and Sets",
+                           "id":  "CLIDs and Sets",
+                           "value":  [
+                                         {
+                                             "id":  "default_constructor_field_clid_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "CLID",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_clid_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "In list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Not in list"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "1",
+                                                               "id":  "default_constructor_field_clid_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_clid",
+                                                               "placeholder":  "Enter CLID",
+                                                               "value":  "",
+                                                               "type":  "multiint__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         },
+                                         {
+                                             "id":  "default_constructor_field_clid_type_id_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "Clid type",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_clid_type_id_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "In list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Not in list"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "1",
+                                                               "id":  "default_constructor_field_clid_type_id_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_clid_type_id",
+                                                               "placeholder":  "Choose Clid type",
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "29",
+                                                                                   "label":  " Link to AutoRu"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2023",
+                                                                                   "label":  "Alice"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "4",
+                                                                                   "label":  "Button with link to Yandex at Yandex.Bar/Yandex.Elements"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "22",
+                                                                                   "label":  "Button with link to Yandex from SearchLine app"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "6",
+                                                                                   "label":  "Default search in installed browsers"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "32",
+                                                                                   "label":  "Experimentum"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "5",
+                                                                                   "label":  "Home page in installed browsers"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "28",
+                                                                                   "label":  "Link to Kinopoisk"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20",
+                                                                                   "label":  "Link to Market"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "25",
+                                                                                   "label":  "Link to Market from Sovetnik"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "30",
+                                                                                   "label":  "Link to Realty"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "15",
+                                                                                   "label":  "Link to Yandex from \"Favorites\""
+                                                                               },
+                                                                               {
+                                                                                   "id":  "17",
+                                                                                   "label":  "Link to Yandex from Windows tile "
+                                                                               },
+                                                                               {
+                                                                                   "id":  "18",
+                                                                                   "label":  "Link to Yandex from in browser\u0027s most visited web-sites menu"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "11",
+                                                                                   "label":  "Link to Yandex in the side bar of Opera browser"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "7",
+                                                                                   "label":  "Links to Yandex from Visual Bookmarks add-on"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "9",
+                                                                                   "label":  "Location Bar search in browsers"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21",
+                                                                                   "label":  "Market. Advisor for websites"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "14",
+                                                                                   "label":  "Pinned site in Windows 7"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "100023",
+                                                                                   "label":  "Pinned site in Windows for Yandex Browser"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "31",
+                                                                                   "label":  "Quick answers in the contextual menu"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "8",
+                                                                                   "label":  "Search field in Visual Bookmarks add-on"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "12",
+                                                                                   "label":  "Search field in side bar of Opera browser"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "100004",
+                                                                                   "label":  "Search field on DNS error pages (404)"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "100006",
+                                                                                   "label":  "Search from application"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10",
+                                                                                   "label":  "Search highlighted text with a contextual menu"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "23",
+                                                                                   "label":  "Search+HP Chrome combo extention"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "Unique installation"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "24",
+                                                                                   "label":  "Voice search"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "100057",
+                                                                                   "label":  "Yandex Browser install"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "100059",
+                                                                                   "label":  "Yandex Browser mobile install"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "1010",
+                                                                                   "label":  "Zen"
+                                                                               }
+                                                                           ],
+                                                               "value":  [
+
+                                                                         ],
+                                                               "width":  2,
+                                                               "type":  "multiselect__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         },
+                                         {
+                                             "id":  "default_constructor_field_set_domain_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "Set domain",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_set_domain_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "3",
+                                                                                   "label":  "Contains"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "4",
+                                                                                   "label":  "Does not contain"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "3",
+                                                               "id":  "default_constructor_field_set_domain_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_set_domain",
+                                                               "placeholder":  "Enter Set domain",
+                                                               "value":  null,
+                                                               "type":  "textarea__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         },
+                                         {
+                                             "id":  "default_constructor_field_set_caption_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "Set name",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_set_caption_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "3",
+                                                                                   "label":  "Contains"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "4",
+                                                                                   "label":  "Does not contain"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "3",
+                                                               "id":  "default_constructor_field_set_caption_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_set_caption",
+                                                               "placeholder":  "Enter Set name",
+                                                               "value":  null,
+                                                               "type":  "textarea__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         },
+                                         {
+                                             "id":  "default_constructor_field_set_id_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "Set ID",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_set_id_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "In list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Not in list"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "1",
+                                                               "id":  "default_constructor_field_set_id_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_set_id",
+                                                               "placeholder":  "Enter Set ID",
+                                                               "value":  "",
+                                                               "type":  "multiint__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         }
+                                     ],
+                           "type":  "collapse"
+                       },
+                       {
+                           "label":  "Contracts",
+                           "id":  "Contracts",
+                           "value":  [
+                                         {
+                                             "id":  "default_constructor_field_external_id_parent_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "External ID",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_external_id_parent_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "In list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Not in list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "3",
+                                                                                   "label":  "Contains"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "4",
+                                                                                   "label":  "Does not contain"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "1",
+                                                               "id":  "default_constructor_field_external_id_parent_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_external_id_parent",
+                                                               "placeholder":  "Enter External ID",
+                                                               "value":  "",
+                                                               "type":  "multistring__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         },
+                                         {
+                                             "id":  "default_constructor_field_country_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "Country",
+                                                               "value":  true,
+                                                               "id":  "default_constructor_field_country_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "In list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Not in list"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "1",
+                                                               "id":  "default_constructor_field_country_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_country",
+                                                               "placeholder":  "Choose country",
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "0",
+                                                                                   "label":  "Unable to determine"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "225",
+                                                                                   "label":  "Russia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "149",
+                                                                                   "label":  "Belarus"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "159",
+                                                                                   "label":  "Kazakhstan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "187",
+                                                                                   "label":  "Ukraine"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "171",
+                                                                                   "label":  "Uzbekistan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "84",
+                                                                                   "label":  "United States"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "983",
+                                                                                   "label":  "Turkey"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "29386",
+                                                                                   "label":  "Abkhazia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10090",
+                                                                                   "label":  "Afghanistan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10054",
+                                                                                   "label":  "Albania"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20826",
+                                                                                   "label":  "Algeria"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "-2",
+                                                                                   "label":  "All countries"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10088",
+                                                                                   "label":  "Andorra"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21182",
+                                                                                   "label":  "Angola"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21534",
+                                                                                   "label":  "Anguilla"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20856",
+                                                                                   "label":  "Antigua and Barbuda"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "93",
+                                                                                   "label":  "Argentina"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "168",
+                                                                                   "label":  "Armenia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21536",
+                                                                                   "label":  "Aruba"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "211",
+                                                                                   "label":  "Australia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "113",
+                                                                                   "label":  "Austria"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "167",
+                                                                                   "label":  "Azerbaijan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21325",
+                                                                                   "label":  "Bahamas"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10532",
+                                                                                   "label":  "Bahrain"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10091",
+                                                                                   "label":  "Bangladesh"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21019",
+                                                                                   "label":  "Barbados"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "114",
+                                                                                   "label":  "Belgium"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21544",
+                                                                                   "label":  "Belize"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20869",
+                                                                                   "label":  "Benin"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21546",
+                                                                                   "label":  "Bermuda"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21550",
+                                                                                   "label":  "Bhutan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10015",
+                                                                                   "label":  "Bolivia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10057",
+                                                                                   "label":  "Bosnia and Herzegovina"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21239",
+                                                                                   "label":  "Botswana"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "94",
+                                                                                   "label":  "Brazil"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21559",
+                                                                                   "label":  "British Virgin Islands"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20274",
+                                                                                   "label":  "Brunei"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "115",
+                                                                                   "label":  "Bulgaria"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21165",
+                                                                                   "label":  "Burkina Faso"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21214",
+                                                                                   "label":  "Burundi"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20975",
+                                                                                   "label":  "Cambodia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20736",
+                                                                                   "label":  "Cameroon"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "95",
+                                                                                   "label":  "Canada"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21326",
+                                                                                   "label":  "Cape Verde"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21007",
+                                                                                   "label":  "Central African Republic"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21331",
+                                                                                   "label":  "Chad"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20862",
+                                                                                   "label":  "Chile"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "134",
+                                                                                   "label":  "China"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10029",
+                                                                                   "label":  "Cocos Islands"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21191",
+                                                                                   "label":  "Colombia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21297",
+                                                                                   "label":  "Comoros"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21198",
+                                                                                   "label":  "Congo"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21574",
+                                                                                   "label":  "Cook Islands"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21131",
+                                                                                   "label":  "Costa Rica"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10083",
+                                                                                   "label":  "Croatia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10017",
+                                                                                   "label":  "Cuba"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21538",
+                                                                                   "label":  "Curacao"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20574",
+                                                                                   "label":  "Cyprus"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "125",
+                                                                                   "label":  "Czech Republic"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20762",
+                                                                                   "label":  "Democratic Republic of the Congo"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "203",
+                                                                                   "label":  "Denmark"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21475",
+                                                                                   "label":  "Djibouti"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20746",
+                                                                                   "label":  "Dominica"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20917",
+                                                                                   "label":  "Dominican Republic"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21562",
+                                                                                   "label":  "East Timor"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20785",
+                                                                                   "label":  "Ecuador"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "1056",
+                                                                                   "label":  "Egypt"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20769",
+                                                                                   "label":  "El Salvador"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21045",
+                                                                                   "label":  "Equatorial Guinea"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20989",
+                                                                                   "label":  "Eritrea"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "179",
+                                                                                   "label":  "Estonia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20768",
+                                                                                   "label":  "Ethiopia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "101519",
+                                                                                   "label":  "Falkland Islands"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10030",
+                                                                                   "label":  "Fiji"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "123",
+                                                                                   "label":  "Finland"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "124",
+                                                                                   "label":  "France"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21451",
+                                                                                   "label":  "French Guiana"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21330",
+                                                                                   "label":  "French Polynesia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21137",
+                                                                                   "label":  "Gabon"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21010",
+                                                                                   "label":  "Gambia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "169",
+                                                                                   "label":  "Georgia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "96",
+                                                                                   "label":  "Germany"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20802",
+                                                                                   "label":  "Ghana"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10089",
+                                                                                   "label":  "Gibraltar"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "246",
+                                                                                   "label":  "Greece"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21567",
+                                                                                   "label":  "Greenland"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21426",
+                                                                                   "label":  "Grenada"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21564",
+                                                                                   "label":  "Guadeloupe"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20747",
+                                                                                   "label":  "Guam"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20968",
+                                                                                   "label":  "Guatemala"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20818",
+                                                                                   "label":  "Guinea"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21143",
+                                                                                   "label":  "Guinea-Bissau"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21477",
+                                                                                   "label":  "Guyana"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21321",
+                                                                                   "label":  "Haiti"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21175",
+                                                                                   "label":  "Honduras"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10584",
+                                                                                   "label":  "Hong Kong"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "116",
+                                                                                   "label":  "Hungary"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10064",
+                                                                                   "label":  "Iceland"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "994",
+                                                                                   "label":  "India"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10095",
+                                                                                   "label":  "Indonesia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10536",
+                                                                                   "label":  "Iran"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20572",
+                                                                                   "label":  "Iraq"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10063",
+                                                                                   "label":  "Ireland"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "181",
+                                                                                   "label":  "Israel"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "205",
+                                                                                   "label":  "Italy"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20733",
+                                                                                   "label":  "Ivory Coast"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10013",
+                                                                                   "label":  "Jamaica"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "137",
+                                                                                   "label":  "Japan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10535",
+                                                                                   "label":  "Jordan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21223",
+                                                                                   "label":  "Kenya"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21572",
+                                                                                   "label":  "Kiribati"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10537",
+                                                                                   "label":  "Kuwait"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "207",
+                                                                                   "label":  "Kyrgyzstan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20972",
+                                                                                   "label":  "Laos"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "206",
+                                                                                   "label":  "Latvia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10538",
+                                                                                   "label":  "Lebanon"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21261",
+                                                                                   "label":  "Lesotho"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21278",
+                                                                                   "label":  "Liberia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10023",
+                                                                                   "label":  "Libya"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10067",
+                                                                                   "label":  "Liechtenstein"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "117",
+                                                                                   "label":  "Lithuania"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21203",
+                                                                                   "label":  "Luxembourg"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10589",
+                                                                                   "label":  "Macau"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20854",
+                                                                                   "label":  "Madagascar"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21151",
+                                                                                   "label":  "Malawi"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10097",
+                                                                                   "label":  "Malaysia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10098",
+                                                                                   "label":  "Maldives"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21004",
+                                                                                   "label":  "Mali"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10069",
+                                                                                   "label":  "Malta"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "101521",
+                                                                                   "label":  "Martinique"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21349",
+                                                                                   "label":  "Mauritania"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21241",
+                                                                                   "label":  "Mauritius"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21576",
+                                                                                   "label":  "Mayotte"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20271",
+                                                                                   "label":  "Mexico"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "208",
+                                                                                   "label":  "Moldova"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10070",
+                                                                                   "label":  "Monaco"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10099",
+                                                                                   "label":  "Mongolia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21610",
+                                                                                   "label":  "Montenegro"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "37176",
+                                                                                   "label":  "Montserrat"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10020",
+                                                                                   "label":  "Morocco"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21235",
+                                                                                   "label":  "Mozambique"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10100",
+                                                                                   "label":  "Myanmar"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21217",
+                                                                                   "label":  "Namibia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21582",
+                                                                                   "label":  "Nauru"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10101",
+                                                                                   "label":  "Nepal"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "118",
+                                                                                   "label":  "Netherlands"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21584",
+                                                                                   "label":  "New Caledonia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "139",
+                                                                                   "label":  "New Zealand"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21231",
+                                                                                   "label":  "Nicaragua"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21339",
+                                                                                   "label":  "Niger"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20741",
+                                                                                   "label":  "Nigeria"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "98542",
+                                                                                   "label":  "Niue"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "98539",
+                                                                                   "label":  "Norfolk Island"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10104",
+                                                                                   "label":  "North Korea"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10068",
+                                                                                   "label":  "North Macedonia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "119",
+                                                                                   "label":  "Norway"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21586",
+                                                                                   "label":  "Oman"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "-3",
+                                                                                   "label":  "Other countries"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10102",
+                                                                                   "label":  "Pakistan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21589",
+                                                                                   "label":  "Palau"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "98552",
+                                                                                   "label":  "Palestinian Territory"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21299",
+                                                                                   "label":  "Panama"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20739",
+                                                                                   "label":  "Papua New Guinea"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20992",
+                                                                                   "label":  "Paraguay"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21156",
+                                                                                   "label":  "Peru"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10108",
+                                                                                   "label":  "Philippines"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "120",
+                                                                                   "label":  "Poland"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10074",
+                                                                                   "label":  "Portugal"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20764",
+                                                                                   "label":  "Puerto Rico"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21486",
+                                                                                   "label":  "Qatar"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21591",
+                                                                                   "label":  "Reunion"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10077",
+                                                                                   "label":  "Romania"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21371",
+                                                                                   "label":  "Rwanda"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20789",
+                                                                                   "label":  "Sahrawi Arab Democratic Republic"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21042",
+                                                                                   "label":  "Saint Kitts and Nevis"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21395",
+                                                                                   "label":  "Saint Lucia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20754",
+                                                                                   "label":  "Saint Vincent and the Grenadines"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20860",
+                                                                                   "label":  "Samoa"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20790",
+                                                                                   "label":  "San Marino"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10540",
+                                                                                   "label":  "Saudi Arabia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21441",
+                                                                                   "label":  "Senegal"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "180",
+                                                                                   "label":  "Serbia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10022",
+                                                                                   "label":  "Seychelles"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21219",
+                                                                                   "label":  "Sierra Leone"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10105",
+                                                                                   "label":  "Singapore"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "121",
+                                                                                   "label":  "Slovakia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "122",
+                                                                                   "label":  "Slovenia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20915",
+                                                                                   "label":  "Solomon Islands"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21227",
+                                                                                   "label":  "Somalia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10021",
+                                                                                   "label":  "South Africa"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "135",
+                                                                                   "label":  "South Korea"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "29387",
+                                                                                   "label":  "South Ossetia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "108137",
+                                                                                   "label":  "South Sudan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "204",
+                                                                                   "label":  "Spain"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10109",
+                                                                                   "label":  "Sri Lanka"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20957",
+                                                                                   "label":  "Sudan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21344",
+                                                                                   "label":  "Suriname"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21251",
+                                                                                   "label":  "Swaziland"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "127",
+                                                                                   "label":  "Sweden"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "126",
+                                                                                   "label":  "Switzerland"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10542",
+                                                                                   "label":  "Syria"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21199",
+                                                                                   "label":  "São Tomé and Príncipe"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "29385",
+                                                                                   "label":  "Taiwan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "209",
+                                                                                   "label":  "Tajikistan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21208",
+                                                                                   "label":  "Tanzania"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "995",
+                                                                                   "label":  "Thailand"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21570",
+                                                                                   "label":  "The Cayman Islands"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21580",
+                                                                                   "label":  "The Federated States of Micronesia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21578",
+                                                                                   "label":  "The Marshall Islands"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21553",
+                                                                                   "label":  "The United States Virgin Islands"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21171",
+                                                                                   "label":  "Togo"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21599",
+                                                                                   "label":  "Tonga"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21187",
+                                                                                   "label":  "Trinidad and Tobago"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10024",
+                                                                                   "label":  "Tunisia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "170",
+                                                                                   "label":  "Turkmenistan"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21595",
+                                                                                   "label":  "Turks and Caicos Islands"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21601",
+                                                                                   "label":  "Tuvalu"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21230",
+                                                                                   "label":  "Uganda"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "210",
+                                                                                   "label":  "United Arab Emirates"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "102",
+                                                                                   "label":  "United Kingdom"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21289",
+                                                                                   "label":  "Uruguay"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21556",
+                                                                                   "label":  "Vanuatu"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21359",
+                                                                                   "label":  "Vatican City"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21184",
+                                                                                   "label":  "Venezuela"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10093",
+                                                                                   "label":  "Vietnam"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21551",
+                                                                                   "label":  "Yemen"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21196",
+                                                                                   "label":  "Zambia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20954",
+                                                                                   "label":  "Zimbabwe"
+                                                                               }
+                                                                           ],
+                                                               "value":  [
+                                                                             "225"
+                                                                         ],
+                                                               "width":  null,
+                                                               "type":  "multiselect__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         },
+                                         {
+                                             "id":  "default_constructor_field_count_payable_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "Payable",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_count_payable_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "In list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Not in list"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "1",
+                                                               "id":  "default_constructor_field_count_payable_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "-1",
+                                                                                   "label":  "All"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "No"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Yes"
+                                                                               }
+                                                                           ],
+                                                               "value":  "-1",
+                                                               "width":  2,
+                                                               "id":  "default_constructor_field_count_payable",
+                                                               "type":  "select__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         }
+                                     ],
+                           "type":  "collapse"
+                       },
+                       {
+                           "label":  "Packs",
+                           "id":  "Packs",
+                           "value":  [
+                                         {
+                                             "id":  "default_constructor_field_vid_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "VID",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_vid_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "In list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Not in list"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "1",
+                                                               "id":  "default_constructor_field_vid_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_vid",
+                                                               "placeholder":  "Enter VID",
+                                                               "value":  "",
+                                                               "type":  "multistring__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         },
+                                         {
+                                             "id":  "default_constructor_field_soft_id_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "Soft",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_soft_id_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "In list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Not in list"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "1",
+                                                               "id":  "default_constructor_field_soft_id_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_soft_id",
+                                                               "placeholder":  "Choose Soft",
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1027",
+                                                                                   "label":  "Alice"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "1425",
+                                                                                   "label":  "Mobile Yandex Browser install"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "1013",
+                                                                                   "label":  "Yandex Extensions"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "1494",
+                                                                                   "label":  "Yandex Pack"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "4",
+                                                                                   "label":  "Yandex.Browser"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "1500",
+                                                                                   "label":  "Yazeka install"
+                                                                               }
+                                                                           ],
+                                                               "value":  [
+
+                                                                         ],
+                                                               "width":  2,
+                                                               "type":  "multiselect__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         },
+                                         {
+                                             "id":  "default_constructor_field_pack_id_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "Pack ID",
+                                                               "value":  true,
+                                                               "id":  "default_constructor_field_pack_id_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "In list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Not in list"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "1",
+                                                               "id":  "default_constructor_field_pack_id_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_pack_id",
+                                                               "placeholder":  "Enter Pack ID",
+                                                               "value":  "1157518",
+                                                               "type":  "multiint__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         },
+                                         {
+                                             "id":  "default_constructor_field_pack_caption_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "Pack name",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_pack_caption_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "3",
+                                                                                   "label":  "Contains"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "4",
+                                                                                   "label":  "Does not contain"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "3",
+                                                               "id":  "default_constructor_field_pack_caption_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_pack_caption",
+                                                               "placeholder":  "Enter Pack name",
+                                                               "value":  null,
+                                                               "type":  "textarea__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         },
+                                         {
+                                             "id":  "default_constructor_field_pack_traffic_id_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "Traffic",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_pack_traffic_id_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "In list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Not in list"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "1",
+                                                               "id":  "default_constructor_field_pack_traffic_id_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "-1",
+                                                                                   "label":  "All"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "Desktop"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "4",
+                                                                                   "label":  "Mobile"
+                                                                               }
+                                                                           ],
+                                                               "value":  "-1",
+                                                               "width":  2,
+                                                               "id":  "default_constructor_field_pack_traffic_id",
+                                                               "type":  "select__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         },
+                                         {
+                                             "id":  "default_constructor_field_pack_country_id_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "Pack country",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_pack_country_id_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "In list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Not in list"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "1",
+                                                               "id":  "default_constructor_field_pack_country_id_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_pack_country_id",
+                                                               "placeholder":  "Choose Pack country",
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "Russia"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "4",
+                                                                                   "label":  "Turkey"
+                                                                               }
+                                                                           ],
+                                                               "value":  [
+
+                                                                         ],
+                                                               "width":  null,
+                                                               "type":  "multiselect__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         },
+                                         {
+                                             "id":  "default_constructor_field_pack_domain_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "Pack domain",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_pack_domain_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "3",
+                                                                                   "label":  "Contains"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "4",
+                                                                                   "label":  "Does not contain"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "3",
+                                                               "id":  "default_constructor_field_pack_domain_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_pack_domain",
+                                                               "placeholder":  "Enter Pack domain",
+                                                               "value":  null,
+                                                               "type":  "textarea__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         }
+                                     ],
+                           "type":  "collapse"
+                       },
+                       {
+                           "label":  "Slices",
+                           "id":  "Slices",
+                           "value":  [
+                                         {
+                                             "id":  "default_constructor_field_os_family_container",
+                                             "group_title":  null,
+                                             "group_id":  null,
+                                             "group_index":  null,
+                                             "label":  "",
+                                             "index":  null,
+                                             "value":  [
+                                                           {
+                                                               "label":  "OS",
+                                                               "value":  false,
+                                                               "id":  "default_constructor_field_os_family_group",
+                                                               "type":  "checkbox__conditional"
+                                                           },
+                                                           {
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "In list"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Not in list"
+                                                                               }
+                                                                           ],
+                                                               "label":  "",
+                                                               "value":  "1",
+                                                               "id":  "default_constructor_field_os_family_operation",
+                                                               "type":  "inline_select__conditional"
+                                                           },
+                                                           {
+                                                               "id":  "default_constructor_field_os_family",
+                                                               "placeholder":  "Choose OS",
+                                                               "choices":  [
+                                                                               {
+                                                                                   "id":  "2",
+                                                                                   "label":  "Android"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "23",
+                                                                                   "label":  "BREW"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "15",
+                                                                                   "label":  "Bada"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "13",
+                                                                                   "label":  "BlackBerry"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "9",
+                                                                                   "label":  "ChromeOS"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "26",
+                                                                                   "label":  "FirefoxOS"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "8",
+                                                                                   "label":  "FreeBSD"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "14",
+                                                                                   "label":  "Java"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "4",
+                                                                                   "label":  "Linux"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "3",
+                                                                                   "label":  "MacOS"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "17",
+                                                                                   "label":  "MeeGo"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "18",
+                                                                                   "label":  "Moblin"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "24",
+                                                                                   "label":  "NetBSD"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "19",
+                                                                                   "label":  "Nucleus"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "25",
+                                                                                   "label":  "OS/2"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "21",
+                                                                                   "label":  "OpenBSD"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "999",
+                                                                                   "label":  "Other OS"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "22",
+                                                                                   "label":  "PalmOS"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "28",
+                                                                                   "label":  "RIMTabletOS"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "16",
+                                                                                   "label":  "SunOS"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "6",
+                                                                                   "label":  "Symbian"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "20",
+                                                                                   "label":  "Tizen"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "12",
+                                                                                   "label":  "Unknown"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "27",
+                                                                                   "label":  "UnknownNix"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "1",
+                                                                                   "label":  "Windows"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "7",
+                                                                                   "label":  "WindowsMobile"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "10",
+                                                                                   "label":  "WindowsPhone"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "11",
+                                                                                   "label":  "WindowsRT"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "30",
+                                                                                   "label":  "desktop"
+                                                                               },
+                                                                               {
+                                                                                   "id":  "5",
+                                                                                   "label":  "iOS"
+                                                                               }
+                                                                           ],
+                                                               "value":  [
+
+                                                                         ],
+                                                               "width":  null,
+                                                               "type":  "multiselect__conditional"
+                                                           }
+                                                       ],
+                                             "type":  "filter_condition"
+                                         }
+                                     ],
+                           "type":  "collapse"
+                       }
+                   ],
+        "label":  null
+    },
+    {
+        "id":  "currency_converter",
+        "fields":  [
+                       {
+                           "id":  "convert_currency_to_field",
+                           "choices":  [
+                                           {
+                                               "id":  "-1",
+                                               "label":  "In transaction currency"
+                                           },
+                                           {
+                                               "id":  "1",
+                                               "label":  "US Dollar"
+                                           },
+                                           {
+                                               "id":  "2",
+                                               "label":  "Russian Ruble"
+                                           },
+                                           {
+                                               "id":  "3",
+                                               "label":  "Euro"
+                                           },
+                                           {
+                                               "id":  "6",
+                                               "label":  "Kazakhstani Tenge"
+                                           },
+                                           {
+                                               "id":  "7",
+                                               "label":  "United Arab Emirates Dirham"
+                                           }
+                                       ],
+                           "value":  "-1",
+                           "width":  null,
+                           "label":  "",
+                           "type":  "select"
+                       }
+                   ],
+        "label":  "Conversion"
+    }
+]
