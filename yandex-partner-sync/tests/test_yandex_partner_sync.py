@@ -13,6 +13,7 @@ class SyncTests(unittest.TestCase):
     def test_oauth_token_accepts_plain_and_prefixed_values(self):
         self.assertEqual(SYNC.normalize_oauth_token("abc"), "abc")
         self.assertEqual(SYNC.normalize_oauth_token(" OAuth abc "), "abc")
+        self.assertEqual(SYNC.normalize_oauth_token("OAuth\r\nabc\r\n"), "abc")
     def test_dynamic_column_names(self):
         self.assertEqual(SYNC.column_name(0), "A")
         self.assertEqual(SYNC.column_name(25), "Z")

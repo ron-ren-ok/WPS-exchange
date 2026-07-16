@@ -98,8 +98,13 @@ def build_blocks(profile, start, end):
 
 
 def normalize_oauth_token(token):
-    token = token.strip()
-    return token.split(None, 1)[1].strip() if token.lower().startswith("oauth ") else token
+    """Accept either a bare OAuth token or a copied Authorization header."""
+    token = token.strip().strip('"').strip("'")
+    if token.lower().startswith("oauth"):
+        token = token[5:].lstrip(" :=\t\r\n")
+    # OAuth access tokens never contain whitespace. Removing it makes a
+    # multi-line GitHub secret copied from a browser safe for HTTP headers.
+    return "".join(token.split())
 
 def fetch_daily(profile, start, end, token):
     token = normalize_oauth_token(token)
