@@ -21,6 +21,12 @@ TARGET_HEADERS = ("Winriser气泡新增", "Winriser气泡血量")
 
 def parse_day(value):
     text = str(value).strip().split(",", 1)[0]
+    try:
+        serial = float(text)
+        if 20000 <= serial <= 80000:
+            return (datetime(1899, 12, 30) + timedelta(days=serial)).date()
+    except ValueError:
+        pass
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d.%m.%Y"):
         try:
             return datetime.strptime(text, fmt).date()
