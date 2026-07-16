@@ -30,6 +30,12 @@ class AvastTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "immediately follow"):
             AVAST.parse_avast_page(bad)
 
+    def test_accepts_repeated_country_headers_for_two_pbi_tables(self):
+        repeated = PAGE.replace(
+            "Total $178 $173 $351",
+            "Country Code 2026-07-14 2026-07-15 Grand Total\nTotal $178 $173 $351",
+        )
+        self.assertEqual(AVAST.parse_avast_page(repeated)[date(2026, 7, 14)]["new_users"], 178)
     def test_column_names(self):
         self.assertEqual(AVAST.col_name(0), "A")
         self.assertEqual(AVAST.col_name(25), "Z")

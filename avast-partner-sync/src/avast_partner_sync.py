@@ -42,9 +42,11 @@ def number(value):
 
 def parse_avast_page(page_text):
     """Return daily records from the first PBI page, with strict Total semantics."""
+    # PBI exports repeat this header for the new-user and revenue tables.
+    # The first table and its immediately following Total pair are authoritative.
     header_lines = re.findall(r"(?m)^Country Code\s+(.+)$", page_text)
-    if len(header_lines) != 1:
-        raise ValueError("Avast page-one Country Code header was not found exactly once")
+    if not header_lines:
+        raise ValueError("Avast page-one Country Code header was not found")
     days = re.findall(r"\b\d{4}-\d{2}-\d{2}\b", header_lines[0])
     if not days or len(days) != len(set(days)):
         raise ValueError("Avast first-table date headers are missing or duplicated")
