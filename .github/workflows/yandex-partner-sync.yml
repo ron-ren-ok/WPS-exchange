@@ -17,7 +17,7 @@ on:
         default: true
         type: boolean
   schedule:
-    - cron: "0 10 * * 1-5"
+    - cron: "0 3 * * *"
       timezone: "Asia/Shanghai"
 
 permissions:
