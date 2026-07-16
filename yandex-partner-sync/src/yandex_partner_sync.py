@@ -97,7 +97,14 @@ def build_blocks(profile, start, end):
     return blocks
 
 
+def normalize_oauth_token(token):
+    token = token.strip()
+    return token.split(None, 1)[1].strip() if token.lower().startswith("oauth ") else token
+
 def fetch_daily(profile, start, end, token):
+    token = normalize_oauth_token(token)
+    if not token:
+        raise RuntimeError("Yandex token is empty")
     body = json.dumps({"blocks": build_blocks(profile, start, end)}, ensure_ascii=False).encode()
     request = Request(ENDPOINT, data=body, method="POST", headers={"Authorization": f"OAuth {token}", "Accept": "application/json", "Content-Type": "application/json"})
     try:

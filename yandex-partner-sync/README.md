@@ -15,7 +15,7 @@ Yandex 换量弹窗与气泡数据同步项目，不依赖 AI 或本机浏览器
 
 必须配置以下 GitHub Actions Secrets：
 
-- `YANDEX_DISTRIBUTION_TOKEN`
+- `YANDEX_DISTRIBUTION_TOKEN`（可保存纯 Token，或带 `OAuth ` 前缀）
 - `GOOGLE_SHEET_SERVICE_ACCOUNT_JSON`
 
 服务账号必须已被授予目标 Google Sheet 的编辑权限。凭证绝不提交到仓库。
