@@ -7,7 +7,7 @@ Yandex 换量弹窗与气泡数据同步项目，不依赖 AI 或本机浏览器
 - 调用 Yandex Distribution API，读取 `Installations` 与 `Partner reward`。
 - 以版本化 Profile 校验国家、Pack ID、指标字段与 API 模板指纹。
 - 按 Google Sheet 的实时表头写入四个 Yandex 指标。
-- 默认从最早缺失数据日期补齐至北京时间昨天；非空差异默认中止，只有手动触发并显式允许时才可纠正。
+- 默认补齐至北京时间昨天；非空差异默认中止，只有手动触发并显式允许时才可纠正。`r`n- 若 API 未提供早期历史数据，任务会跳过这段连续的前置空档；数据开始返回后的任意日期断档仍会中止任务。
 
 ## GitHub Actions
 

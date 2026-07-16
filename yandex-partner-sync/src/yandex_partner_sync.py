@@ -135,10 +135,22 @@ def fetch_daily(profile, start, end, token):
         day = parse_day(row["default_field_dt"])
         totals[day][0] += scalar(row["msetupstatistics_setups"])
         totals[day][1] += scalar(row["default_fixed_partner_reward_metric"])
-    expected = {start + timedelta(days=index) for index in range((end - start).days + 1)}
-    if set(totals) != expected:
-        raise RuntimeError(f"Yandex source coverage gap: {sorted(expected - set(totals))}")
+    source_start = validate_source_coverage(totals, start, end)
+    if source_start > start:
+        print(f"Yandex source has no historical data before {source_start}; skipping that leading interval.")
     return {day: {"new_users": values[0], "blood_volume": values[1]} for day, values in totals.items()}
+
+
+def validate_source_coverage(totals, start, end):
+    """Allow unavailable leading history, but never allow gaps after data starts."""
+    if not totals:
+        raise RuntimeError("Yandex source returned no data")
+    source_start = min(totals)
+    expected = {source_start + timedelta(days=index) for index in range((end - source_start).days + 1)}
+    missing = expected - set(totals)
+    if missing:
+        raise RuntimeError(f"Yandex source coverage gap: {sorted(missing)}")
+    return source_start
 
 
 def column_name(index):

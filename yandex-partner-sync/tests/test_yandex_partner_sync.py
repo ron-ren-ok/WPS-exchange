@@ -14,6 +14,13 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(SYNC.normalize_oauth_token("abc"), "abc")
         self.assertEqual(SYNC.normalize_oauth_token(" OAuth abc "), "abc")
         self.assertEqual(SYNC.normalize_oauth_token("OAuth\r\nabc\r\n"), "abc")
+    def test_source_coverage_allows_only_a_leading_history_gap(self):
+        start = date(2025, 9, 25)
+        end = date(2026, 2, 13)
+        totals = {date(2026, 2, 11): [1, 1], date(2026, 2, 12): [1, 1], date(2026, 2, 13): [1, 1]}
+        self.assertEqual(SYNC.validate_source_coverage(totals, start, end), date(2026, 2, 11))
+        with self.assertRaisesRegex(RuntimeError, "coverage gap"):
+            SYNC.validate_source_coverage({date(2026, 2, 11): [1, 1], date(2026, 2, 13): [1, 1]}, start, end)
     def test_dynamic_column_names(self):
         self.assertEqual(SYNC.column_name(0), "A")
         self.assertEqual(SYNC.column_name(25), "Z")
