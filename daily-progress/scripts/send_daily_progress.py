@@ -105,11 +105,11 @@ def request_values() -> list[list[list[dict]]]:
     info = json.loads(required("GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"))
     credentials = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     session = google.auth.transport.requests.AuthorizedSession(credentials)
-    summary, revenue, users = request_rows(session, [
-        f"{SHEET_NAME}!A1:P6",
-        f"{SHEET_NAME}!A10:I40",
-        f"{SHEET_NAME}!J10:R40",
-    ])
+    # Google may consolidate multiple ranges from a worksheet into one GridData.
+    # One request per range preserves each range's row offsets and ordering.
+    (summary,) = request_rows(session, [f"{SHEET_NAME}!A1:P6"])
+    (revenue,) = request_rows(session, [f"{SHEET_NAME}!A10:I40"])
+    (users,) = request_rows(session, [f"{SHEET_NAME}!J10:R40"])
     (source,) = request_rows(session, [f"{SOURCE_SHEET_NAME}!A1:Q1000"])
     return [summary, revenue, users, source]
 
