@@ -208,7 +208,7 @@ def forecast_metric(
 
 
 def forecast_text(summary: list[list[dict]], source_rows: list[list[dict]]) -> str:
-    cutoff_date = cell_date(summary[1][5])
+    cutoff_date = cell_date(summary[1][4])
     if cutoff_date is None:
         raise RuntimeError("The 日进度追踪 data-cutoff date is missing.")
     report_date = cutoff_date + timedelta(days=1)
