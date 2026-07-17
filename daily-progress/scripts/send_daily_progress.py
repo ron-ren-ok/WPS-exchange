@@ -99,9 +99,9 @@ def card_text(summary: list[list[dict]], revenue_rows: list[list[dict]], users_r
     incomplete_note = f"\n\n➡️**部分数据不全：** {"；".join(incomplete)}" if incomplete else ""
 
     return (
-        "➡️**血量（万美元）**\n"
+        "➡️**血量（万美元）**\n\n"
         f"{metric(3)}\n\n"
-        "➡️**新增（万）**\n"
+        "➡️**新增（万）**\n\n"
         f"{metric(5, '360')}"
         f"{incomplete_note}\n\n[查看日进度追踪]({SHEET_URL})"
     )
