@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Prepare WPS daily-progress cards from the Google Sheet without AI."""
 
 from __future__ import annotations
@@ -82,29 +82,36 @@ def last_status(rows: list[list[dict]], date_column: int, status_column: int) ->
     return "状态待核对"
 
 
-def request_values() -> list[list[list[dict]]]:
-    info = json.loads(required("GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"))
-    credentials = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-    session = google.auth.transport.requests.AuthorizedSession(credentials)
+def request_rows(session: google.auth.transport.requests.AuthorizedSession, ranges: list[str]) -> list[list[list[dict]]]:
+    """Read one worksheet per request so Google cannot group ranges by sheet."""
     response = session.get(
         f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}",
         params={
-            "ranges": [
-                f"{SHEET_NAME}!A1:P6",
-                f"{SHEET_NAME}!A10:I40",
-                f"{SHEET_NAME}!J10:R40",
-                f"{SOURCE_SHEET_NAME}!A1:Q1000",
-            ],
+            "ranges": ranges,
             "includeGridData": "true",
             "fields": "sheets(data(rowData(values(formattedValue,effectiveValue))))",
         },
         timeout=30,
     )
     response.raise_for_status()
-    data = response.json().get("sheets", [{}])[0].get("data", [])
-    if len(data) != 4:
-        raise RuntimeError("Google Sheets returned an unexpected number of ranges.")
-    return [[row.get("values", []) for row in grid.get("rowData", [])] for grid in data]
+    sheets = response.json().get("sheets", [])
+    grids = [grid for sheet in sheets for grid in sheet.get("data", [])]
+    if len(grids) != len(ranges):
+        raise RuntimeError(f"Google Sheets returned {len(grids)} ranges, expected {len(ranges)}.")
+    return [[row.get("values", []) for row in grid.get("rowData", [])] for grid in grids]
+
+
+def request_values() -> list[list[list[dict]]]:
+    info = json.loads(required("GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"))
+    credentials = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+    session = google.auth.transport.requests.AuthorizedSession(credentials)
+    summary, revenue, users = request_rows(session, [
+        f"{SHEET_NAME}!A1:P6",
+        f"{SHEET_NAME}!A10:I40",
+        f"{SHEET_NAME}!J10:R40",
+    ])
+    (source,) = request_rows(session, [f"{SOURCE_SHEET_NAME}!A1:Q1000"])
+    return [summary, revenue, users, source]
 
 
 def card_text(summary: list[list[dict]], revenue_rows: list[list[dict]], users_rows: list[list[dict]]) -> str:
