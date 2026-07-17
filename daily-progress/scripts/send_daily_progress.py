@@ -78,28 +78,33 @@ def request_values() -> list[list[list[dict]]]:
     return [[row.get("values", []) for row in grid.get("rowData", [])] for grid in data]
 
 def card_text(summary: list[list[dict]], revenue_rows: list[list[dict]], users_rows: list[list[dict]]) -> str:
-    # A1:P6 indices: row 2 => 1, row 4 => 3, row 6 => 5; B/D/F/H/J/L/N/P => 1/3/.../15.
     # 状态表按天落数，日报发送时只使用其中最新的一条有效状态（通常为昨天）。
     revenue_status = last_status(revenue_rows, 0, 8)
     users_status = last_status(users_rows, 0, 8)
 
-    def metric(row: int, unit: str, title: str) -> str:
+    def metric(row: int, label: str = "") -> str:
+        prefix = f"{label} " if label else ""
         return (
-            f"**{title}（{unit}）**\n"
-            f"累计完成 **{row_value(summary, row, 3)}**　目标 **{row_value(summary, row, 1)}**　完成率 **{row_value(summary, row, 5)}**\n"
-            f"时间进度 {row_value(summary, row, 13)}　·　{row_value(summary, row, 15)}\n"
-            f"剩余目标 {row_value(summary, row, 7)}　·　后续日均需完成 {row_value(summary, row, 11)}"
+            f"🔴**{prefix}累计完成 {row_value(summary, row, 3)}　目标 {row_value(summary, row, 1)}　"
+            f"完成率 {row_value(summary, row, 5)}　时间进度 {row_value(summary, row, 13)}　·　"
+            f"{row_value(summary, row, 15)}　剩余目标 {row_value(summary, row, 7)}　·　"
+            f"后续日均需完成 {row_value(summary, row, 11)}**"
         )
 
-    return (
-        f"{metric(3, '万美元', '血量')}\n\n"
-        f"{metric(5, '万', '360 新增')}\n\n"
-        "**数据状态**\n"
-        f"血量：{display_status(revenue_status)}\n"
-        f"360新增：{display_status(users_status)}"
-        f"\n\n[查看日进度追踪]({SHEET_URL})"
-    )
+    incomplete = []
+    for status in (revenue_status, users_status):
+        detail = status.removeprefix("数据不全：").strip()
+        if detail and detail not in ("完整", "状态待核对") and detail not in incomplete:
+            incomplete.append(detail)
+    incomplete_note = f"\n\n➡️**部分数据不全：** {"；".join(incomplete)}" if incomplete else ""
 
+    return (
+        "➡️**血量（万美元）**\n"
+        f"{metric(3)}\n\n"
+        "➡️**新增（万）**\n"
+        f"{metric(5, '360')}"
+        f"{incomplete_note}\n\n[查看日进度追踪]({SHEET_URL})"
+    )
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare WPS daily-progress card content.")
