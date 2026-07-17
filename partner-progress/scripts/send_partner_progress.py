@@ -233,7 +233,8 @@ def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]]) ->
         latest = latest_metric_date(series[name][metric], report_date)
         if latest is None:
             continue
-        lines = [f"➡️**{name}：{latest.month}.{latest.day}**"]
+        weekdays = ("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+        lines = [f"➡️**{name}：{latest.month}.{latest.day} {weekdays[latest.weekday()]}**"]
         if latest in series[name]["new"]:
             lines.append(metric_line("新增", series[name]["new"], latest))
         elif metric == "revenue":
