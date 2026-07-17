@@ -201,8 +201,8 @@ def forecast_metric(
     pace = "领先" if gap >= 0 else "落后"
     prefix = f"{label} " if label else ""
     return (
-        f"🔴**{prefix}累计完成 {cumulative:.2f}　目标 {target:.2f}　完成率 {completion_rate:.1f}%　"
-        f"时间进度 {time_progress:.1f}%　·　{pace}时间进度 {abs(gap):.1f}%　剩余目标 {max(target - cumulative, 0):.2f}**\n"
+        f"🔴**{prefix}测算累计完成 {cumulative:.2f}　目标 {target:.2f}　完成率 {completion_rate:.1f}%　"
+        f"时间进度 {time_progress:.1f}%　·　{pace}时间进度 {abs(gap):.1f}%　剩余目标 {max(target - cumulative, 0):.2f}**\n\n"
         f"🔴**预计本月目标可达成 {month_total:.2f}　完成率 {projected_rate:.1f}%**"
     )
 
