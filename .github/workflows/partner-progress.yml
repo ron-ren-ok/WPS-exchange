@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       webhook_target:
-        description: "Webhook target (test is the default during validation)"
+        description: "Webhook target (production is the default)"
         required: true
-        default: test
+        default: production
         type: choice
         options:
           - test
@@ -41,7 +41,7 @@ jobs:
       - name: Send WPS partner progress card
         shell: pwsh
         env:
-          WPS_WEBHOOK_URL: ${{ inputs.webhook_target == 'production' && secrets.WPS_WEBHOOK_URL || secrets.WPS_WEBHOOK_URL_TEST }}
+          WPS_WEBHOOK_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.webhook_target == 'test' && secrets.WPS_WEBHOOK_URL_TEST || secrets.WPS_WEBHOOK_URL }}
           WPS_WEBHOOK_KEY: ${{ secrets.WPS_WEBHOOK_KEY }}
           WPS_WEBHOOK_SECRET: ${{ secrets.WPS_WEBHOOK_SECRET }}
         run: |
