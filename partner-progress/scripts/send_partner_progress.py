@@ -112,23 +112,24 @@ def make_series(rows: list[list[dict]]) -> tuple[dict[str, dict[str, dict[date, 
     series: dict[str, dict[str, dict[date, float]]] = {
         partner["name"]: {"new": {}, "revenue": {}} for partner in PARTNERS
     }
-    latest_any: date | None = None
+    latest_actual: date | None = None
     for row in rows[1:]:
         row_date = sheet_date(row[0] if row else None)
         if not row_date:
             continue
-        latest_any = max(latest_any, row_date) if latest_any else row_date
         for partner in PARTNERS:
             new_value = aggregate(row, partner["new"])
             if new_value is not None:
                 series[partner["name"]]["new"][row_date] = new_value
+                latest_actual = max(latest_actual, row_date) if latest_actual else row_date
             if partner["revenue"]:
                 revenue_value = aggregate(row, partner["revenue"])
                 if revenue_value is not None:
                     series[partner["name"]]["revenue"][row_date] = revenue_value
-    if latest_any is None:
-        raise RuntimeError("合作方返回数据 does not contain valid dates.")
-    return series, latest_any
+                    latest_actual = max(latest_actual, row_date) if latest_actual else row_date
+    if latest_actual is None:
+        raise RuntimeError("合作方返回数据 does not contain actual partner metrics.")
+    return series, latest_actual
 
 
 def month_targets(rows: list[list[dict]], report_month: int) -> dict[str, float]:
