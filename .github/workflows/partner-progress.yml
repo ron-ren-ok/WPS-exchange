@@ -1,0 +1,50 @@
+﻿name: WPS partner progress
+
+on:
+  schedule:
+    # 04:10 Beijing time (20:10 UTC on the preceding day), every day.
+    - cron: "10 20 * * *"
+  workflow_dispatch:
+    inputs:
+      webhook_target:
+        description: "Webhook target (test is the default during validation)"
+        required: true
+        default: test
+        type: choice
+        options:
+          - test
+          - production
+
+permissions:
+  contents: read
+
+jobs:
+  send-partner-progress:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: partner-progress
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: partner-progress/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Prepare partner progress content
+        env:
+          GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
+        run: python scripts/send_partner_progress.py --output "$RUNNER_TEMP/wps-partner-progress.md"
+      - name: Send WPS partner progress card
+        shell: pwsh
+        env:
+          WPS_WEBHOOK_URL: ${{ inputs.webhook_target == 'production' && secrets.WPS_WEBHOOK_URL || secrets.WPS_WEBHOOK_URL_TEST }}
+          WPS_WEBHOOK_KEY: ${{ secrets.WPS_WEBHOOK_KEY }}
+          WPS_WEBHOOK_SECRET: ${{ secrets.WPS_WEBHOOK_SECRET }}
+        run: |
+          $cardText = Get-Content -LiteralPath "$env:RUNNER_TEMP/wps-partner-progress.md" -Raw -Encoding utf8
+          $beijingDate = [DateTime]::UtcNow.AddHours(8).ToString('yyyy-MM-dd')
+          ./scripts/send-wps-webhook.ps1 -CardTitle '📣合作方数据汇报及达成预测' -CardSubtitle $beijingDate -CardText $cardText -WebhookUrl $env:WPS_WEBHOOK_URL
