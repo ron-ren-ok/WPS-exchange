@@ -59,7 +59,7 @@ def display_status(status: str) -> str:
 
 
 def request_values() -> list[list[list[dict]]]:
-    info = json.loads(required("GOOGLE_SERVICE_ACCOUNT_JSON"))
+    info = json.loads(required("GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"))
     credentials = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     session = google.auth.transport.requests.AuthorizedSession(credentials)
     response = session.get(

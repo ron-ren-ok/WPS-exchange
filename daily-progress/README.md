@@ -6,8 +6,9 @@
 
 在仓库 **Settings → Secrets and variables → Actions** 中配置：
 
-- `GOOGLE_SERVICE_ACCOUNT_JSON`：可读取目标 Google 表格的服务账号 JSON；服务账号邮箱须以查看者身份共享到该表格。
-- `WPS_WEBHOOK_URL`：WPS 群机器人 webhook 地址。
+- `GOOGLE_SHEET_SERVICE_ACCOUNT_JSON`：可读取目标 Google 表格的服务账号 JSON；服务账号邮箱须以查看者身份共享到该表格。
+- `WPS_WEBHOOK_URL_TEST`：测试阶段使用的 WPS 群机器人 webhook 地址。
+- `WPS_WEBHOOK_URL`：验证通过后切换使用的正式 WPS 群机器人 webhook 地址。
 - `WPS_WEBHOOK_KEY` 和 `WPS_WEBHOOK_SECRET`：仅当机器人启用签名校验时成对配置。
 
-工作流每天北京时间 07:00 自动运行，也可以在 Actions 页面手动触发。
+工作流每天北京时间 07:00 自动运行，在验证阶段默认发送到测试 webhook。手动触发时可选择 `test` 或 `production`；通过验证前请保持 `test`。
