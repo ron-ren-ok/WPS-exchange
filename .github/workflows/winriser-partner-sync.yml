@@ -7,11 +7,6 @@ on:
         description: "End date (YYYY-MM-DD); defaults to yesterday Beijing time"
         required: false
         type: string
-      allow_overwrite:
-        description: "Allow a user-confirmed correction of conflicting nonblank values"
-        required: false
-        default: false
-        type: boolean
   schedule:
     - cron: "0 3 * * *"
       timezone: "Asia/Shanghai"
@@ -34,7 +29,6 @@ jobs:
       - run: >-
           python src/winriser_partner_sync.py
           ${{ inputs.end_date && format('--end-date {0}', inputs.end_date) || '' }}
-          ${{ inputs.allow_overwrite && '--allow-overwrite' || '' }}
         env:
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
           WINRISER_LOGIN_SECRET: ${{ secrets.WINRISER_LOGIN_SECRET }}

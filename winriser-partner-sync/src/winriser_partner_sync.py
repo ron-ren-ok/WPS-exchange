@@ -155,34 +155,23 @@ def values_match(current, wanted):
         return str(current).replace(",", "") == str(wanted)
 
 
-def updates_for(headers, target_rows, source_rows, allow_overwrite=False):
-    updates, conflicts, overwrites = [], [], []
+def updates_for(headers, target_rows, source_rows):
+    """Write newly returned Tracker corrections without interrupting the sync."""
+    updates = []
     for day, metrics in sorted(source_rows.items()):
         row = target_rows.get(day)
         if not row:
-            conflicts.append(f"missing target date row: {day}")
-            continue
+            raise RuntimeError(f"missing target date row: {day}")
         for header, key in zip(TARGET_HEADERS, ("new_users", "blood_volume")):
             column, wanted = headers.index(header), metrics[key]
             current = value_at(row, column)
-            if current not in ("", None) and not values_match(current, wanted):
-                detail = f"{day} {header}: sheet={current}, source={wanted}"
-                if allow_overwrite:
-                    updates.append({"range": f"'{SHEET_NAME}'!{col_name(column)}{row['row']}", "values": [[wanted]]})
-                    overwrites.append(detail)
-                else:
-                    conflicts.append(detail)
-            elif current in ("", None):
+            if current in ("", None) or not values_match(current, wanted):
                 updates.append({"range": f"'{SHEET_NAME}'!{col_name(column)}{row['row']}", "values": [[wanted]]})
-    if conflicts:
-        raise RuntimeError("refusing to overwrite conflicts: " + "; ".join(conflicts))
-    return updates, overwrites
-
+    return updates
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--end-date")
-    parser.add_argument("--allow-overwrite", action="store_true")
     args = parser.parse_args()
     secret = os.environ.get("WINRISER_LOGIN_SECRET", "").strip().strip('"').strip("'")
     service_json = os.environ.get("GOOGLE_SHEET_SERVICE_ACCOUNT_JSON")
@@ -198,10 +187,10 @@ def main():
     date_rows_added = ensure_date_rows(service, SHEET_ID, SHEET_NAME, target_rows, cutoff)
     if date_rows_added:
         headers, target_rows = get_sheet(service)
-    updates, overwrites = updates_for(headers, target_rows, source, args.allow_overwrite)
+    updates = updates_for(headers, target_rows, source)
     if updates:
         service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
-    print(json.dumps({"source_days": sorted(day.isoformat() for day in source), "date_rows_added": [day.isoformat() for day in date_rows_added], "updated_cells": len(updates), "overwrites": overwrites}, ensure_ascii=False))
+    print(json.dumps({"source_days": sorted(day.isoformat() for day in source), "date_rows_added": [day.isoformat() for day in date_rows_added], "updated_cells": len(updates)}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
