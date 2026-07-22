@@ -17,12 +17,13 @@ from google.oauth2 import service_account
 
 
 SPREADSHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
-SOURCE_SHEET = "合作方返回数据"
+SOURCE_SHEET = "合作方新增血量"
 TARGET_SHEET = "目标完成度"
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=303958504"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=63683153"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 UNIT_DIVISOR = 10_000
 TARGET_BLOCKS = {"合作方预算目标": "revenue", "合作方新增目标": "new"}
+REQUIRED_SOURCE_HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
 
 
 def required(name: str) -> str:
@@ -33,7 +34,6 @@ def required(name: str) -> str:
 
 
 def request_rows(session: google.auth.transport.requests.AuthorizedSession, sheet_range: str) -> list[list[dict]]:
-    """Use one API request per range; Google may group ranges from one tab."""
     response = session.get(
         f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}",
         params={
@@ -54,9 +54,9 @@ def read_data() -> tuple[list[list[dict]], list[list[dict]]]:
     info = json.loads(required("GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"))
     credentials = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     session = google.auth.transport.requests.AuthorizedSession(credentials)
-    # ZZ keeps the column discovery open for newly-added partners.
+    # A:E is the complete used range of the five-column long table; no row cap.
     return (
-        request_rows(session, f"{SOURCE_SHEET}!A1:ZZ1000"),
+        request_rows(session, f"{SOURCE_SHEET}!A:E"),
         request_rows(session, f"{TARGET_SHEET}!A1:ZZ20"),
     )
 
@@ -85,31 +85,44 @@ def cell_text(row: list[dict], index: int) -> str:
     return row[index].get("formattedValue", "").strip() if len(row) > index else ""
 
 
-def latest_actual_date(source_rows: list[list[dict]]) -> date:
-    """Ignore future dated rows whose partner cells are entirely blank."""
-    latest: date | None = None
+def source_records(source_rows: list[list[dict]]) -> list[dict]:
+    if not source_rows:
+        raise RuntimeError("合作方新增血量 is empty.")
+    headers = {cell_text(source_rows[0], index): index for index in range(len(source_rows[0])) if cell_text(source_rows[0], index)}
+    missing = [header for header in REQUIRED_SOURCE_HEADERS if header not in headers]
+    if missing:
+        raise RuntimeError(f"合作方新增血量 is missing headers: {', '.join(missing)}")
+    records = []
     for row in source_rows[1:]:
-        row_date = sheet_date(row[0] if row else None)
-        if row_date and any(number(cell) is not None for cell in row[1:]):
-            latest = max(latest, row_date) if latest else row_date
-    if latest is None:
-        raise RuntimeError("合作方返回数据 does not contain actual partner metrics.")
-    return latest
+        def cell(header: str) -> dict | None:
+            column = headers[header]
+            return row[column] if len(row) > column else None
+
+        row_date = sheet_date(cell("日期"))
+        partner, operation = cell_text(row, headers["合作方"]), cell_text(row, headers["运营位"])
+        new_value, revenue_value = number(cell("新增")), number(cell("血量"))
+        if not row_date or not partner or not operation or (new_value is None and revenue_value is None):
+            continue
+        records.append({"date": row_date, "partner": partner, "operation": operation, "new": new_value, "revenue": revenue_value})
+    if not records:
+        raise RuntimeError("合作方新增血量 does not contain actual partner metrics.")
+    return records
+
+
+def latest_actual_date(records: list[dict]) -> date:
+    return max(record["date"] for record in records)
 
 
 def target_config(target_rows: list[list[dict]], report_month: int) -> dict[str, dict]:
-    """Discover partner names and monthly targets from the two target blocks."""
     if len(target_rows) < 3:
         raise RuntimeError("目标完成度 does not contain target blocks and monthly rows.")
     block_row, header_row = target_rows[0], target_rows[1]
     month_row = next((row for row in target_rows[2:] if cell_text(row, 0) == f"{report_month}月"), None)
     if month_row is None:
         raise RuntimeError(f"目标完成度 does not contain a {report_month}月 target row.")
-
     starts = [(index, TARGET_BLOCKS[cell_text(block_row, index)]) for index in range(len(block_row)) if cell_text(block_row, index) in TARGET_BLOCKS]
     if not starts:
         raise RuntimeError("目标完成度 does not contain 合作方预算目标 or 合作方新增目标 blocks.")
-
     configs: dict[str, dict] = {}
     for block_index, (start, metric) in enumerate(starts):
         end = starts[block_index + 1][0] if block_index + 1 < len(starts) else len(header_row)
@@ -118,58 +131,32 @@ def target_config(target_rows: list[list[dict]], report_month: int) -> dict[str,
             target = number(month_row[column]) if len(month_row) > column else None
             if not name or target is None:
                 continue
-            # Budget target takes precedence if a name accidentally appears in both blocks.
+            # Preserve the existing rule: revenue target wins if a name has both.
             if name not in configs or metric == "revenue":
                 configs[name] = {"name": name, "target_metric": metric, "target": target}
     return configs
 
 
-def source_columns(source_header: list[dict], partner_name: str) -> dict[str, tuple[int, ...]]:
-    """Group all columns such as Avast换量弹窗新增 / Avast气泡血量 by suffix."""
-    columns: dict[str, list[int]] = {"new": [], "revenue": []}
-    prefix = partner_name.casefold()
-    for index in range(1, len(source_header)):
-        header = cell_text(source_header, index)
-        if not header.casefold().startswith(prefix):
-            continue
-        if header.endswith("新增"):
-            columns["new"].append(index)
-        elif header.endswith("血量"):
-            columns["revenue"].append(index)
-    return {metric: tuple(indices) for metric, indices in columns.items()}
-
-
-def build_partners(source_rows: list[list[dict]], target_rows: list[list[dict]], report_month: int) -> list[dict]:
+def build_partners(records: list[dict], target_rows: list[list[dict]], report_month: int) -> list[dict]:
     targets = target_config(target_rows, report_month)
-    if not source_rows:
-        raise RuntimeError("合作方返回数据 is empty.")
-    partners: list[dict] = []
-    for config in targets.values():
-        columns = source_columns(source_rows[0], config["name"])
-        if columns[config["target_metric"]]:
-            partners.append({**config, **columns})
-    return partners
+    return [
+        config for config in targets.values()
+        if any(record["partner"] == config["name"] and record[config["target_metric"]] is not None for record in records)
+    ]
 
 
-def aggregate(row: list[dict], columns: tuple[int, ...]) -> float | None:
-    """A blank component is not treated as zero; numeric zero remains valid."""
-    values = [number(row[column]) if len(row) > column else None for column in columns]
-    if not values or any(value is None for value in values):
-        return None
-    return sum(values) / UNIT_DIVISOR
-
-
-def make_series(source_rows: list[list[dict]], partners: list[dict]) -> dict[str, dict[str, dict[date, float]]]:
+def make_series(records: list[dict], partners: list[dict]) -> dict[str, dict[str, dict[date, float]]]:
+    """Aggregate all operations of each configured partner from long records."""
     series = {partner["name"]: {"new": {}, "revenue": {}} for partner in partners}
-    for row in source_rows[1:]:
-        row_date = sheet_date(row[0] if row else None)
-        if not row_date:
+    for record in records:
+        if record["partner"] not in series:
             continue
-        for partner in partners:
-            for metric in ("new", "revenue"):
-                value = aggregate(row, partner[metric])
-                if value is not None:
-                    series[partner["name"]][metric][row_date] = value
+        for metric in ("new", "revenue"):
+            value = record[metric]
+            if value is None:
+                continue
+            day = record["date"]
+            series[record["partner"]][metric][day] = series[record["partner"]][metric].get(day, 0) + value / UNIT_DIVISOR
     return series
 
 
@@ -224,9 +211,10 @@ def forecast_line(label: str, series: dict[date, float], latest: date, target: f
 
 
 def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]]) -> str:
-    report_date = latest_actual_date(source_rows)
-    partners = build_partners(source_rows, target_rows, report_date.month)
-    series = make_series(source_rows, partners)
+    records = source_records(source_rows)
+    report_date = latest_actual_date(records)
+    partners = build_partners(records, target_rows, report_date.month)
+    series = make_series(records, partners)
     blocks: list[str] = []
     for partner in partners:
         name, metric = partner["name"], partner["target_metric"]
@@ -247,7 +235,7 @@ def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]]) ->
         blocks.append("\n\n".join(lines))
     if not blocks:
         raise RuntimeError("No configured partner metrics were available for the latest reporting month.")
-    return "\n\n".join(blocks) + f"\n\n[查看合作方返回数据]({SHEET_URL})"
+    return "\n\n".join(blocks) + f"\n\n[查看合作方新增血量]({SHEET_URL})"
 
 
 def main() -> None:
