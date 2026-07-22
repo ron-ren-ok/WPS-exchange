@@ -100,6 +100,19 @@ def source_records(values, start, end):
     return records
 
 
+def first_source_day(values):
+    if not values:
+        raise RuntimeError("360 source sheet is empty")
+    for row_number, row in enumerate(values[1:], start=2):
+        if not row or not row[0]:
+            continue
+        try:
+            return row_number, parse_day(row[0])
+        except ValueError:
+            continue
+    raise RuntimeError("360 source first daily record was not found")
+
+
 def target_records(values):
     if not values or len(values[0]) != len(set(values[0])) or any(header not in values[0] for header in TARGET_HEADERS):
         raise RuntimeError("long-format target headers are missing or duplicated")
@@ -118,6 +131,42 @@ def target_records(values):
             raise RuntimeError(f"duplicate long-format target record: {key}")
         records[key] = {"row": row_number, "values": row}
     return headers, records
+
+
+def missing_keys(headers, existing, source_first_day, end, explicit_start=None, lookback_days=14):
+    new_column = headers.index("新增")
+    keys = set()
+
+    def add_missing(start, operation):
+        current = start
+        while current <= end:
+            key = (current, PARTNER, operation)
+            record = existing.get(key)
+            if record is None or value_at(record, new_column) in ("", None):
+                keys.add(key)
+            current += timedelta(days=1)
+
+    if explicit_start:
+        for operation in SURFACES.values():
+            add_missing(max(explicit_start, source_first_day), operation)
+        return keys
+
+    lookback_start = max(source_first_day, end - timedelta(days=lookback_days - 1))
+    for operation in SURFACES.values():
+        populated_days = [
+            key[0] for key, record in existing.items()
+            if key[1] == PARTNER and key[2] == operation and value_at(record, new_column) not in ("", None)
+        ]
+        latest = max(populated_days) if populated_days else None
+        if latest:
+            add_missing(latest + timedelta(days=1), operation)
+        else:
+            # A new operating position begins with the rolling window; history is explicit-only.
+            add_missing(lookback_start, operation)
+        # Also repair recent blank cells without reopening older historical data.
+        if latest:
+            add_missing(lookback_start, operation)
+    return keys
 
 
 def plan_writes(headers, existing, source, allow_overwrite=False):
@@ -180,25 +229,42 @@ def main():
     if not service_json:
         raise RuntimeError("missing GOOGLE_SHEET_SERVICE_ACCOUNT_JSON")
     end = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
-    start = parse_day(args.start_date) if args.start_date else date(2023, 1, 1)
-    if start > end:
-        raise RuntimeError("start date is after end date")
+    requested_start = parse_day(args.start_date) if args.start_date else None
     service = sheets_service(service_json)
-    source_values = service.spreadsheets().values().get(
-        spreadsheetId=SOURCE_SHEET_ID, range=f"'{SOURCE_SHEET_NAME}'!A:D", valueRenderOption="UNFORMATTED_VALUE"
-    ).execute().get("values", [])
     target_values = service.spreadsheets().values().get(
         spreadsheetId=TARGET_SHEET_ID, range=f"'{TARGET_SHEET_NAME}'!A:E", valueRenderOption="UNFORMATTED_VALUE", dateTimeRenderOption="SERIAL_NUMBER"
     ).execute().get("values", [])
-    source = source_records(source_values, start, end)
     headers, existing = target_records(target_values)
+    source_seed = service.spreadsheets().values().get(
+        spreadsheetId=SOURCE_SHEET_ID, range=f"'{SOURCE_SHEET_NAME}'!A1:D20", valueRenderOption="UNFORMATTED_VALUE"
+    ).execute().get("values", [])
+    source_first_row, source_first_day = first_source_day(source_seed)
+    if requested_start and requested_start > end:
+        raise RuntimeError("start date is after end date")
+    required_keys = missing_keys(headers, existing, source_first_day, end, requested_start)
+    if not required_keys:
+        print(json.dumps({"start": (requested_start or source_first_day).isoformat(), "end": end.isoformat(), "updated_cells": 0, "appended_rows": 0, "overwrites": [], "skipped_conflicts": [], "status": "already_complete"}, ensure_ascii=False))
+        return
+    source_start = min(key[0] for key in required_keys)
+    source_start_row = source_first_row + (source_start - source_first_day).days
+    source_end_row = source_first_row + (end - source_first_day).days
+    source_rows = service.spreadsheets().values().get(
+        spreadsheetId=SOURCE_SHEET_ID,
+        range=f"'{SOURCE_SHEET_NAME}'!A{source_start_row}:D{source_end_row}",
+        valueRenderOption="UNFORMATTED_VALUE",
+    ).execute().get("values", [])
+    source = source_records([source_seed[0], *source_rows], source_start, end)
+    source = {key: value for key, value in source.items() if key in required_keys}
+    unavailable = sorted(required_keys - set(source))
+    if unavailable:
+        raise RuntimeError("360 source is missing required records: " + "; ".join(f"{key[0]} {key[2]}" for key in unavailable))
     updates, appends, overwrites, skipped_conflicts = plan_writes(headers, existing, source, args.allow_overwrite)
     if updates:
         service.spreadsheets().values().batchUpdate(
             spreadsheetId=TARGET_SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}
         ).execute()
     append_rows(service, headers, appends)
-    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites, "skipped_conflicts": skipped_conflicts}, ensure_ascii=False))
+    print(json.dumps({"start": (requested_start or source_start).isoformat(), "end": end.isoformat(), "source_start": source_start.isoformat(), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites, "skipped_conflicts": skipped_conflicts}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

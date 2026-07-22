@@ -1,6 +1,6 @@
 import importlib.util
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 MODULE = Path(__file__).resolve().parents[1] / "src" / "360_partner_sync.py"
@@ -56,6 +56,33 @@ class Sync360Tests(unittest.TestCase):
         self.assertEqual(appends, [])
         self.assertEqual(overwrites, [])
         self.assertEqual(len(skipped_conflicts), 1)
+
+    def test_plans_only_missing_or_blank_records(self):
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        day = date(2026, 7, 14)
+        existing = {
+            (day, "360", "换量弹窗"): {"row": 2, "values": [46217, "360", "换量弹窗", 10, ""]},
+            (day, "360", "气泡"): {"row": 3, "values": [46217, "360", "气泡", "", ""]},
+        }
+        missing = SYNC.missing_keys(headers, existing, day, day, explicit_start=day)
+        self.assertEqual(missing, {
+            (day, "360", "气泡"),
+            (day, "360", "卸载后引导H5"),
+        })
+
+    def test_default_only_checks_recent_window_and_new_days(self):
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        end = date(2026, 7, 31)
+        old = date(2026, 1, 1)
+        existing = {
+            (end - timedelta(days=1), "360", "换量弹窗"): {"row": 2, "values": [46234, "360", "换量弹窗", 10, ""]},
+            (end - timedelta(days=1), "360", "气泡"): {"row": 3, "values": [46234, "360", "气泡", 10, ""]},
+        }
+        missing = SYNC.missing_keys(headers, existing, old, end)
+        self.assertNotIn((old + timedelta(days=1), "360", "卸载后引导H5"), missing)
+        self.assertIn((end - timedelta(days=13), "360", "卸载后引导H5"), missing)
+        self.assertIn((end, "360", "换量弹窗"), missing)
+        self.assertIn((end, "360", "气泡"), missing)
 
 if __name__ == "__main__":
     unittest.main()

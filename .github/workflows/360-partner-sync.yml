@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: "Start date (YYYY-MM-DD); defaults to full source history"
+        description: "Start date (YYYY-MM-DD); omit for incremental sync, provide only for historical backfill"
         required: false
         type: string
       end_date:
