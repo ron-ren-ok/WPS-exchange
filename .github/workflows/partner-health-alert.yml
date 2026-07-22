@@ -1,0 +1,58 @@
+name: Partner Health Alert
+
+on:
+  schedule:
+    # 05:00 Beijing time (21:00 UTC on the preceding day), every day.
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      webhook_target:
+        description: "Webhook target (production is the default)"
+        required: true
+        default: production
+        type: choice
+        options:
+          - test
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: partner-health-alert
+  cancel-in-progress: false
+
+jobs:
+  send-partner-health-alert:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: partner-health-alert
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: partner-health-alert/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Prepare partner health alert when needed
+        env:
+          GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
+        run: python scripts/send_partner_health_alert.py --output "$RUNNER_TEMP/partner-health-alert.md"
+      - name: Send WPS webhook only when alert is triggered
+        shell: pwsh
+        env:
+          WPS_WEBHOOK_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.webhook_target == 'test' && secrets.WPS_WEBHOOK_URL_TEST || secrets.WPS_WEBHOOK_URL }}
+          WPS_WEBHOOK_KEY: ${{ secrets.WPS_WEBHOOK_KEY }}
+          WPS_WEBHOOK_SECRET: ${{ secrets.WPS_WEBHOOK_SECRET }}
+        run: |
+          $alertPath = "$env:RUNNER_TEMP/partner-health-alert.md"
+          if (-not (Test-Path -LiteralPath $alertPath)) {
+            Write-Output 'No data anomaly or red alert. Webhook not called.'
+            exit 0
+          }
+          $message = Get-Content -LiteralPath $alertPath -Raw -Encoding utf8
+          ../daily-progress/scripts/send-wps-webhook.ps1 -Markdown $message -WebhookUrl $env:WPS_WEBHOOK_URL
