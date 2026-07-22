@@ -33,3 +33,14 @@ class PartnerHealthAlertTests(unittest.TestCase):
             [{"formattedValue": "7日留存率"}, {"formattedValue": "12.0%"}],
         ]
         self.assertEqual(MODULE.formula_errors(rows), ["次日留存率"])
+    def test_data_anomaly_and_red_alert_both_trigger_by_header_name(self):
+        headers = ["合作方", "昨日新增", "次留", "较大盘", "7留", "较大盘", "昨日卸载率", "较大盘", "次留较近4个同星期", "7留较近4个同星期", "卸载较近4个同星期", "预警等级", "预警原因", "数据异常原因"]
+        data = [
+            ["360", "26,010", "19.9%", "-29.6%", "10.8%", "-29.1%", "0.008%", "-99.3%", "-5.9%", "9.1%", "-99.8%", "数据异常", "卸载率低于5%", "卸载率低于5%"],
+            ["Terabox", "2,144", "11.9%", "-57.9%", "6.3%", "-58.8%", "0.047%", "-95.5%", "-20.5%", "-6.5%", "-99.7%", "红色预警", "次留低于大盘58%", ""],
+        ]
+        rows = [[], [], [], [{"formattedValue": value} for value in headers]]
+        rows.extend([[{"formattedValue": value} for value in row] for row in data])
+        partners = MODULE.triggered_partners(rows)
+        self.assertEqual([partner["name"] for partner in partners], ["360", "Terabox"])
+        self.assertEqual(partners[0]["data_reason"], "卸载率低于5%")
