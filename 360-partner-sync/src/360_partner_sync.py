@@ -95,8 +95,6 @@ def source_records(values, start, end):
                 if key in records:
                     raise RuntimeError(f"duplicate 360 source record: {key}")
                 records[key] = {"new_users": new_users}
-    if not records:
-        raise RuntimeError("360 source has no daily records in the requested range")
     return records
 
 
@@ -256,15 +254,15 @@ def main():
     source = source_records([source_seed[0], *source_rows], source_start, end)
     source = {key: value for key, value in source.items() if key in required_keys}
     unavailable = sorted(required_keys - set(source))
-    if unavailable:
-        raise RuntimeError("360 source is missing required records: " + "; ".join(f"{key[0]} {key[2]}" for key in unavailable))
+    # A blank source cell means the partner has not reported that date. It is not zero
+    # and must not block the other independently available operating-position records.
     updates, appends, overwrites, skipped_conflicts = plan_writes(headers, existing, source, args.allow_overwrite)
     if updates:
         service.spreadsheets().values().batchUpdate(
             spreadsheetId=TARGET_SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}
         ).execute()
     append_rows(service, headers, appends)
-    print(json.dumps({"start": (requested_start or source_start).isoformat(), "end": end.isoformat(), "source_start": source_start.isoformat(), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites, "skipped_conflicts": skipped_conflicts}, ensure_ascii=False))
+    print(json.dumps({"start": (requested_start or source_start).isoformat(), "end": end.isoformat(), "source_start": source_start.isoformat(), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites, "skipped_conflicts": skipped_conflicts, "unavailable_records": [f"{key[0]} {key[2]}" for key in unavailable]}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

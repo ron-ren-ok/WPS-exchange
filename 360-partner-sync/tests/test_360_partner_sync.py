@@ -23,6 +23,19 @@ class Sync360Tests(unittest.TestCase):
         self.assertEqual(records[(date(2026, 7, 15), "360", "换量弹窗")]["new_users"], 0)
         self.assertNotIn((date(2026, 7, 15), "360", "气泡"), records)
 
+    def test_keeps_available_source_records_when_some_metrics_are_blank(self):
+        values = [
+            ["日期", "360-1", "360-2", "360-3"],
+            ["2026-07-08", 10, 20, ""],
+        ]
+        records = SYNC.source_records(values, date(2026, 7, 8), date(2026, 7, 8))
+        required = {
+            (date(2026, 7, 8), "360", "换量弹窗"),
+            (date(2026, 7, 8), "360", "气泡"),
+            (date(2026, 7, 8), "360", "卸载后引导H5"),
+        }
+        self.assertEqual(set(records), required - {(date(2026, 7, 8), "360", "卸载后引导H5")})
+
     def test_plans_append_without_writing_blood_volume(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
         updates, appends, overwrites, skipped_conflicts = SYNC.plan_writes(
