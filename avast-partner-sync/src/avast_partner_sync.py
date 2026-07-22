@@ -7,13 +7,10 @@ import os
 import re
 import sys
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pdfplumber
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from partner_sync_common.sheet_dates import ensure_date_rows, first_missing_date
 
 SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 SHEET_NAME = "合作方新增血量"
