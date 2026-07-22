@@ -13,13 +13,12 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from partner_sync_common.sheet_dates import ensure_date_rows, first_missing_date
-
 ROOT = Path(__file__).resolve().parents[1]
 ENDPOINT = "https://distribution.yandex.net/api/v2/constructor_statistics/api_table/?lang=en"
 SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
-SHEET_NAME = "合作方返回数据"
+SHEET_NAME = "合作方新增血量"
+HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
+PARTNER = "Yandex"
 FIELDS = (
     "default_field_dt", "default_field_country", "default_field_pack_id",
     "msetupstatistics_setups", "default_fixed_partner_reward_metric",
@@ -60,7 +59,7 @@ def scalar(value):
 
 def load_profile(name):
     profile = load_json(ROOT / "config" / "profiles" / f"{name}.json")
-    required = {"profile_id", "status", "surface", "template", "country_id", "country_name", "pack_ids", "target_headers", "filter_fingerprint", "template_sha256"}
+    required = {"profile_id", "status", "surface", "template", "country_id", "country_name", "pack_ids", "filter_fingerprint", "template_sha256"}
     if profile.get("status") != "active" or required - set(profile):
         raise RuntimeError(f"invalid or inactive {name} profile")
     contract = {key: profile[key] for key in ("profile_id", "version", "template", "country_id", "country_name", "pack_ids")}
@@ -177,59 +176,102 @@ def column_name(index):
 
 
 def sheet_rows(service):
-    values = service.spreadsheets().values().get(spreadsheetId=SHEET_ID, range=f"'{SHEET_NAME}'!A1:ZZ10000", valueRenderOption="UNFORMATTED_VALUE", dateTimeRenderOption="SERIAL_NUMBER").execute().get("values", [])
-    if not values:
-        raise RuntimeError("target sheet is empty")
+    values = service.spreadsheets().values().get(
+        spreadsheetId=SHEET_ID,
+        range=f"'{SHEET_NAME}'!A1:E10000",
+        valueRenderOption="UNFORMATTED_VALUE",
+        dateTimeRenderOption="SERIAL_NUMBER",
+    ).execute().get("values", [])
+    if not values or len(values[0]) != len(set(values[0])) or any(header not in values[0] for header in HEADERS):
+        raise RuntimeError("long-format target headers are missing or duplicated")
     headers = values[0]
-    required = ["日期", "Yandex换量弹窗新增", "Yandex换量弹窗血量", "Yandex气泡新增", "Yandex气泡血量"]
-    if any(header not in headers for header in required) or len(headers) != len(set(headers)):
-        raise RuntimeError("target sheet headers are missing or duplicated")
+    positions = {header: headers.index(header) for header in HEADERS}
     result = {}
     for row_number, row in enumerate(values[1:], start=2):
-        if not row or not row[0]:
+        if not row or not existing_value(row, positions["日期"]):
             continue
-        day = parse_day(row[0])
-        if day in result:
-            raise RuntimeError(f"duplicate date row in target sheet: {day}")
-        result[day] = {"row": row_number, "values": row}
+        key = (
+            parse_day(existing_value(row, positions["日期"])),
+            str(existing_value(row, positions["合作方"])).strip(),
+            str(existing_value(row, positions["运营位"])).strip(),
+        )
+        if key in result:
+            raise RuntimeError(f"duplicate long-format record in target sheet: {key}")
+        result[key] = {"row": row_number, "values": row}
     return headers, result
 
 
 def existing_value(row, column):
-    values = row["values"]
+    values = row["values"] if isinstance(row, dict) else row
     return values[column] if column < len(values) else ""
 
 
-def first_missing_day(headers, rows, profiles, cutoff):
-    missing = []
-    for day, row in rows.items():
-        if day > cutoff:
-            continue
-        for profile in profiles:
-            for header in profile["target_headers"]:
-                if existing_value(row, headers.index(header)) in ("", None):
-                    missing.append(day)
-    return min([*missing, first_missing_date(rows, cutoff)])
+def values_match(current, wanted):
+    try:
+        return abs(float(current) - float(wanted)) < 1e-9
+    except (TypeError, ValueError):
+        return str(current).replace(",", "") == str(wanted)
 
-def planned_updates(headers, rows, profile_rows, profile, allow_overwrite):
-    updates, conflicts = [], []
-    for day, metrics in sorted(profile_rows.items()):
-        row = rows.get(day)
-        if row is None:
-            conflicts.append(f"missing date row: {day}")
+
+def first_missing_day(headers, rows, profiles, cutoff):
+    candidates = []
+    for profile in profiles:
+        operation = profile["surface"]
+        records = {day: row for (day, partner, surface), row in rows.items() if partner == PARTNER and surface == operation and day <= cutoff}
+        if not records:
             continue
-        for header, key in zip(profile["target_headers"], ("new_users", "blood_volume")):
-            column = headers.index(header)
-            current, value = existing_value(row, column), metrics[key]
-            if current not in ("", None) and str(current).replace(",", "") != str(value):
-                if not allow_overwrite:
-                    conflicts.append(f"{day} {header}: sheet={current}, source={value}")
-                    continue
-            if current in ("", None) or str(current).replace(",", "") != str(value):
-                updates.append({"range": f"'{SHEET_NAME}'!{column_name(column)}{row['row']}", "values": [[value]]})
+        first_day = min(records)
+        expected = {first_day + timedelta(days=index) for index in range((cutoff - first_day).days + 1)}
+        incomplete = {day for day, row in records.items() if any(existing_value(row, headers.index(header)) in ("", None) for header in ("新增", "血量"))}
+        candidates.append(min((expected - set(records)) | incomplete) if (expected - set(records)) | incomplete else cutoff)
+    return min(candidates) if candidates else cutoff
+
+
+def planned_writes(headers, rows, profile_rows, profile, allow_overwrite):
+    positions = {header: headers.index(header) for header in HEADERS}
+    updates, appends, conflicts, overwrites = [], [], [], []
+    operation = profile["surface"]
+    for day, metrics in sorted(profile_rows.items()):
+        row = rows.get((day, PARTNER, operation))
+        if row is None:
+            appends.append({"日期": day, "合作方": PARTNER, "运营位": operation, "新增": metrics["new_users"], "血量": metrics["blood_volume"]})
+            continue
+        for header, key in (("新增", "new_users"), ("血量", "blood_volume")):
+            current, value = existing_value(row, positions[header]), metrics[key]
+            if current in ("", None):
+                updates.append({"range": f"'{SHEET_NAME}'!{column_name(positions[header])}{row['row']}", "values": [[value]]})
+            elif not values_match(current, value):
+                detail = f"{day} {PARTNER}/{operation}/{header}: sheet={current}, source={value}"
+                if allow_overwrite:
+                    updates.append({"range": f"'{SHEET_NAME}'!{column_name(positions[header])}{row['row']}", "values": [[value]]})
+                    overwrites.append(detail)
+                else:
+                    conflicts.append(detail)
     if conflicts:
         raise RuntimeError("refusing to write conflicts: " + "; ".join(conflicts))
-    return updates
+    return updates, appends, overwrites
+
+
+def append_rows(service, headers, records):
+    if not records:
+        return
+    positions = {header: headers.index(header) for header in HEADERS}
+    values = []
+    for record in records:
+        row = [""] * len(headers)
+        row[positions["日期"]] = record["日期"].isoformat()
+        row[positions["合作方"]] = record["合作方"]
+        row[positions["运营位"]] = record["运营位"]
+        row[positions["新增"]] = record["新增"]
+        row[positions["血量"]] = record["血量"]
+        values.append(row)
+    service.spreadsheets().values().append(
+        spreadsheetId=SHEET_ID,
+        range=f"'{SHEET_NAME}'!A1:{column_name(len(headers) - 1)}",
+        valueInputOption="USER_ENTERED",
+        insertDataOption="INSERT_ROWS",
+        body={"majorDimension": "ROWS", "values": values},
+    ).execute()
 
 
 def google_service(service_json):
@@ -237,6 +279,7 @@ def google_service(service_json):
     from googleapiclient.discovery import build
     credentials = Credentials.from_service_account_info(json.loads(service_json), scopes=["https://www.googleapis.com/auth/spreadsheets"])
     return build("sheets", "v4", credentials=credentials, cache_discovery=False)
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -256,15 +299,16 @@ def main():
     if start > end:
         raise RuntimeError("start date is after end date")
     source_by_profile = {profile["profile_id"]: fetch_daily(profile, start, end, token) for profile in profiles}
-    date_rows_added = ensure_date_rows(service, SHEET_ID, SHEET_NAME, rows, end)
-    if date_rows_added:
-        headers, rows = sheet_rows(service)
-    updates = []
+    updates, appends, overwrites = [], [], []
     for profile in profiles:
-        updates.extend(planned_updates(headers, rows, source_by_profile[profile["profile_id"]], profile, args.allow_overwrite))
+        next_updates, next_appends, next_overwrites = planned_writes(headers, rows, source_by_profile[profile["profile_id"]], profile, args.allow_overwrite)
+        updates.extend(next_updates)
+        appends.extend(next_appends)
+        overwrites.extend(next_overwrites)
     if updates:
         service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
-    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "date_rows_added": [day.isoformat() for day in date_rows_added], "updated_cells": len(updates), "overwrite": args.allow_overwrite}, ensure_ascii=False))
+    append_rows(service, headers, appends)
+    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
