@@ -25,23 +25,37 @@ class Sync360Tests(unittest.TestCase):
 
     def test_plans_append_without_writing_blood_volume(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
-        updates, appends, overwrites = SYNC.plan_writes(
+        updates, appends, overwrites, skipped_conflicts = SYNC.plan_writes(
             headers, {}, {(date(2026, 7, 14), "360", "换量弹窗"): {"new_users": 10}}, False
         )
         self.assertEqual(updates, [])
         self.assertEqual(overwrites, [])
+        self.assertEqual(skipped_conflicts, [])
         self.assertEqual(appends, [{"日期": date(2026, 7, 14), "合作方": "360", "运营位": "换量弹窗", "新增": 10}])
 
     def test_updates_existing_new_users_only(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
         key = (date(2026, 7, 14), "360", "气泡")
         rows = {key: {"row": 99, "values": [46217, "360", "气泡", 8, ""]}}
-        updates, appends, overwrites = SYNC.plan_writes(headers, rows, {key: {"new_users": 9}}, True)
+        updates, appends, overwrites, skipped_conflicts = SYNC.plan_writes(headers, rows, {key: {"new_users": 9}}, True)
         self.assertEqual(appends, [])
         self.assertEqual(len(updates), 1)
         self.assertIn("D99", updates[0]["range"])
         self.assertEqual(len(overwrites), 1)
+        self.assertEqual(skipped_conflicts, [])
 
+
+    def test_skips_existing_different_value_by_default(self):
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        key = (date(2026, 7, 14), "360", "气泡")
+        rows = {key: {"row": 99, "values": [46217, "360", "气泡", 8, ""]}}
+        updates, appends, overwrites, skipped_conflicts = SYNC.plan_writes(
+            headers, rows, {key: {"new_users": 9}}
+        )
+        self.assertEqual(updates, [])
+        self.assertEqual(appends, [])
+        self.assertEqual(overwrites, [])
+        self.assertEqual(len(skipped_conflicts), 1)
 
 if __name__ == "__main__":
     unittest.main()

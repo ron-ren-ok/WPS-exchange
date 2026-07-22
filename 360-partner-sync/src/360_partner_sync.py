@@ -120,9 +120,9 @@ def target_records(values):
     return headers, records
 
 
-def plan_writes(headers, existing, source, allow_overwrite):
+def plan_writes(headers, existing, source, allow_overwrite=False):
     new_column = headers.index("新增")
-    updates, appends, conflicts, overwrites = [], [], [], []
+    updates, appends, skipped_conflicts, overwrites = [], [], [], []
     for key, metrics in sorted(source.items()):
         row = existing.get(key)
         if row is None:
@@ -138,10 +138,8 @@ def plan_writes(headers, existing, source, allow_overwrite):
                 updates.append({"range": f"'{TARGET_SHEET_NAME}'!{col_name(new_column)}{row['row']}", "values": [[wanted]]})
                 overwrites.append(detail)
             else:
-                conflicts.append(detail)
-    if conflicts:
-        raise RuntimeError("refusing to overwrite conflicts: " + "; ".join(conflicts))
-    return updates, appends, overwrites
+                skipped_conflicts.append(detail)
+    return updates, appends, overwrites, skipped_conflicts
 
 
 def append_rows(service, headers, records):
@@ -194,13 +192,13 @@ def main():
     ).execute().get("values", [])
     source = source_records(source_values, start, end)
     headers, existing = target_records(target_values)
-    updates, appends, overwrites = plan_writes(headers, existing, source, args.allow_overwrite)
+    updates, appends, overwrites, skipped_conflicts = plan_writes(headers, existing, source, args.allow_overwrite)
     if updates:
         service.spreadsheets().values().batchUpdate(
             spreadsheetId=TARGET_SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}
         ).execute()
     append_rows(service, headers, appends)
-    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
+    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites, "skipped_conflicts": skipped_conflicts}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

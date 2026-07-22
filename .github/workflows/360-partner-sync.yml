@@ -12,8 +12,7 @@ on:
         required: false
         type: string
   schedule:
-    - cron: "0 3 * * *"
-      timezone: "Asia/Shanghai"
+    - cron: "0 19 * * *"
 
 permissions:
   contents: read
@@ -34,6 +33,5 @@ jobs:
           python src/360_partner_sync.py
           ${{ inputs.start_date && format('--start-date {0}', inputs.start_date) || '' }}
           ${{ inputs.end_date && format('--end-date {0}', inputs.end_date) || '' }}
-          --allow-overwrite
         env:
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
