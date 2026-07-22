@@ -97,37 +97,51 @@ def data_anomalies(overview_rows: list[list[dict]], market_rows: list[list[dict]
     return latest_text or "未知", anomalies
 
 
-def red_partners(overview_rows: list[list[dict]]) -> list[dict[str, str]]:
+def column_index(headers: list[str], name: str, start: int = 0) -> int:
+    for index in range(start, len(headers)):
+        if headers[index] == name:
+            return index
+    raise RuntimeError(f"数据总览缺少表头：{name}")
+
+
+def triggered_partners(overview_rows: list[list[dict]]) -> list[dict[str, str]]:
+    if len(overview_rows) < 5:
+        raise RuntimeError("数据总览缺少合作方预警明细区。")
+    headers = [cell_text(overview_rows[3], index) for index in range(len(overview_rows[3]))]
+    columns = {
+        "name": column_index(headers, "合作方"),
+        "new_users": column_index(headers, "昨日新增"),
+        "d1": column_index(headers, "次留"),
+        "d7": column_index(headers, "7留"),
+        "uninstall": column_index(headers, "昨日卸载率"),
+        "d1_baseline": column_index(headers, "次留较近4个同星期"),
+        "d7_baseline": column_index(headers, "7留较近4个同星期"),
+        "uninstall_baseline": column_index(headers, "卸载较近4个同星期"),
+        "level": column_index(headers, "预警等级"),
+        "reason": column_index(headers, "预警原因"),
+        "data_reason": column_index(headers, "数据异常原因"),
+    }
+    columns["d1_market"] = column_index(headers, "较大盘", columns["d1"] + 1)
+    columns["d7_market"] = column_index(headers, "较大盘", columns["d7"] + 1)
+    columns["uninstall_market"] = column_index(headers, "较大盘", columns["uninstall"] + 1)
     partners = []
     for row in overview_rows[4:]:
-        if not cell_text(row, 0) or cell_text(row, 12) != "红色预警":
+        level = cell_text(row, columns["level"])
+        if not cell_text(row, columns["name"]) or level not in {"数据异常", "红色预警"}:
             continue
-        partners.append({
-            "name": cell_text(row, 0),
-            "new_users": cell_text(row, 1),
-            "d1": cell_text(row, 2),
-            "d1_market": cell_text(row, 3),
-            "d7": cell_text(row, 4),
-            "d7_market": cell_text(row, 5),
-            "uninstall": cell_text(row, 6),
-            "uninstall_market": cell_text(row, 7),
-            "d1_baseline": cell_text(row, 9),
-            "d7_baseline": cell_text(row, 10),
-            "uninstall_baseline": cell_text(row, 11),
-            "level": cell_text(row, 12),
-            "reason": cell_text(row, 13),
-        })
+        partners.append({key: cell_text(row, index) for key, index in columns.items()})
     return partners
 
 
 def partner_block(partner: dict[str, str], anomaly_reason: str) -> str:
+    data_reason = partner.get("data_reason") or anomaly_reason
     return "\n".join([
         f"## {partner['name']}：{partner['level']} | {partner['reason'] or '未填写预警原因'}",
         f"- 昨日新增：{partner['new_users'] or '—'}",
         f"- 次留：{partner['d1'] or '—'}（较大盘 {partner['d1_market'] or '—'}；较近4个同星期 {partner['d1_baseline'] or '—'}）",
         f"- 7留：{partner['d7'] or '—'}（较大盘 {partner['d7_market'] or '—'}；较近4个同星期 {partner['d7_baseline'] or '—'}）",
         f"- 昨日卸载率：{partner['uninstall'] or '—'}（较大盘 {partner['uninstall_market'] or '—'}；较近4个同星期 {partner['uninstall_baseline'] or '—'}）",
-        f"- 数据异常原因：{anomaly_reason}",
+        f"- 数据异常原因：{data_reason}",
     ])
 
 
@@ -154,12 +168,12 @@ def main() -> None:
     args = parser.parse_args()
     overview_rows, market_rows = read_overview()
     data_date, anomalies = data_anomalies(overview_rows, market_rows)
-    partners = red_partners(overview_rows)
+    partners = triggered_partners(overview_rows)
     if not partners and not anomalies:
         print("No data anomaly or red alert. Alert file not created.")
         return
     Path(args.output).write_text(alert_markdown(data_date, partners, anomalies), encoding="utf-8")
-    print(f"Partner-health alert prepared: {len(partners)} red partner(s), {len(anomalies)} data anomaly/anomalies.")
+    print(f"Partner-health alert prepared: {len(partners)} triggered partner(s), {len(anomalies)} global data anomaly/anomalies.")
 
 
 if __name__ == "__main__":
