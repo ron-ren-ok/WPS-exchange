@@ -10,6 +10,13 @@ SPEC.loader.exec_module(WINRISER)
 
 
 class WinriserTests(unittest.TestCase):
+    def test_resolves_child_source_selector_values(self):
+        soup = WINRISER.BeautifulSoup("""
+            <select><option value="0">All Source</option><option value="6888">wnrwpsofc - Winriser</option><option value="7777">wnrwpsofc_exchange</option></select>
+        """, "html.parser")
+        self.assertEqual(WINRISER.source_option_value(soup.select_one("select"), "wnrwpsofc"), "6888")
+        self.assertEqual(WINRISER.source_option_value(soup.select_one("select"), "wnrwpsofc_exchange"), "7777")
+
     def test_parses_only_mapped_wps_child_sources(self):
         html = """
         <table><tr><th></th><th>Date</th><th>Source</th><th>Install Count</th><th>Spend-PPI($)</th></tr>

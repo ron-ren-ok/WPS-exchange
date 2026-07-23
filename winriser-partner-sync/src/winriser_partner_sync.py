@@ -73,7 +73,16 @@ def login(session, secret):
         raise RuntimeError("Tracker login was not accepted")
 
 
-def fetch_report(session):
+def source_option_value(select, source_name):
+    normalized = source_name.strip().lower()
+    for option in select.select("option"):
+        label = option.get_text(" ", strip=True).lower()
+        if label == normalized or label.startswith(normalized + " - "):
+            return option.get("value")
+    raise RuntimeError(f"Tracker source selector does not contain {source_name}")
+
+
+def fetch_report(session, source_name):
     response = session.get(REPORT_URL, timeout=30)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
@@ -83,7 +92,11 @@ def fetch_report(session):
     if not source or not report_date or not submit:
         raise RuntimeError("Tracker report controls changed")
     data = form_data(soup)
-    data.update({source["name"]: "0", report_date["name"]: "3", submit["name"]: submit.get("value", "View Report")})
+    data.update({
+        source["name"]: source_option_value(source, source_name),
+        report_date["name"]: "3",
+        submit["name"]: submit.get("value", "View Report"),
+    })
     response = session.post(REPORT_URL, data=data, timeout=30)
     response.raise_for_status()
     return response.text
@@ -101,7 +114,8 @@ def parse_report(html, cutoff):
         if len(cells) < 5 or cells[-4] == "Date":
             continue
         day_text, source, installs, spend = cells[-4:]
-        operation = SOURCE_TO_OPERATION.get(source.strip().lower())
+        source_key = source.strip().lower().split(" - ", 1)[0]
+        operation = SOURCE_TO_OPERATION.get(source_key)
         if operation is None:  # Ignore WPS aggregate and unrelated child sources.
             continue
         day = parse_day(day_text)
@@ -111,8 +125,6 @@ def parse_report(html, cutoff):
         if key in rows:
             raise RuntimeError(f"Tracker has duplicate {source} rows for {day}")
         rows[key] = {"new_users": number(installs), "blood_volume": number(spend)}
-    if not rows:
-        raise RuntimeError("Tracker returned no verified Winriser child-source rows")
     return rows
 
 
@@ -231,14 +243,22 @@ def main():
     with requests.Session() as session:
         session.headers["User-Agent"] = "WPS partner data sync/1.0"
         login(session, secret)
-        source = parse_report(fetch_report(session), cutoff)
+        source = {}
+        unavailable_sources = []
+        for source_name in SOURCE_TO_OPERATION:
+            child_rows = parse_report(fetch_report(session, source_name), cutoff)
+            if not child_rows:
+                unavailable_sources.append(source_name)
+            source.update(child_rows)
+    if not source:
+        raise RuntimeError("Tracker returned no verified Winriser rows for: " + ", ".join(SOURCE_TO_OPERATION))
     service = sheets_service(service_json)
     headers, target_rows = get_sheet(service)
     updates, appends, overwrites = plan_writes(headers, target_rows, source, args.allow_overwrite)
     if updates:
         service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
     append_rows(service, headers, appends)
-    print(json.dumps({"source_records": [{"date": day.isoformat(), "operation": operation} for day, operation in sorted(source)], "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
+    print(json.dumps({"source_records": [{"date": day.isoformat(), "operation": operation} for day, operation in sorted(source)], "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites, "unavailable_sources": unavailable_sources}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
