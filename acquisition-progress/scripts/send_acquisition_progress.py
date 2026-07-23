@@ -197,9 +197,9 @@ def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]], ex
         daily_target = new_target / days_in_month
         sparkline, _ = weekly_sparkline(daily_new, latest)
         blocks.append(
-            f"**👉🏻{config['label']}**\n"
-            f"▪️昨日新增 **{daily_new[latest]:.2f}万**　|　本月日均 **{daily_actual:.2f}万 / {daily_target:.2f}万** 本月新增 **{month_actual:.2f}万 / {new_target:.2f}万**（{month_actual / new_target:.1%}）\n"
-            f"▪️近30天 MAD **{daily_mau[latest]:.2f}万 / {mau_target:.2f}万**（{daily_mau[latest] / mau_target:.1%}）\n"
+            f"**👉🏻{config['label']}**\n\n"
+            f"▪️昨日新增 **{daily_new[latest]:.2f}万**　|　本月日均 **{daily_actual:.2f}万 / {daily_target:.2f}万** 本月新增 **{month_actual:.2f}万 / {new_target:.2f}万**（{month_actual / new_target:.1%}）\n\n"
+            f"▪️近30天 MAD **{daily_mau[latest]:.2f}万 / {mau_target:.2f}万**（{daily_mau[latest] / mau_target:.1%}）\n\n"
             f"▪️近12周新增日均 `{sparkline}`"
         )
     return "\n\n".join(blocks) + f"\n\n[查看三方&导量运营数据]({SHEET_URL})"
