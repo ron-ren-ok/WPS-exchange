@@ -30,5 +30,22 @@ class AcquisitionProgressTests(unittest.TestCase):
         self.assertIn("上涨", trend)
 
 
+    def test_missing_expected_day_returns_direct_notice(self):
+        rows = [
+            [cell("日期"), cell("渠道"), cell("新增设备数"), cell("近30日活跃设备数_MAD")],
+            [cell(number=46224), cell("三方换量"), cell(number=10000), cell(number=10000)],
+            [cell(number=46224), cell("安卓导PC"), cell(number=10000), cell(number=10000)],
+            [cell(number=46224), cell("Affiliate"), cell(number=10000), cell(number=10000)],
+        ]
+        self.assertEqual(REPORT.report_text(rows, [], expected_date=date(2026, 7, 22)), "注意：7月22日数据为空，请检查。")
+
+    def test_missing_single_channel_names_the_channel(self):
+        records = [
+            {"date": date(2026, 7, 22), "channel": "三方换量"},
+            {"date": date(2026, 7, 22), "channel": "安卓导PC"},
+        ]
+        self.assertEqual(REPORT.missing_data_notice(records, date(2026, 7, 22)), "注意：7月22日Affiliate数据为空，请检查。")
+
+
 if __name__ == "__main__":
     unittest.main()
