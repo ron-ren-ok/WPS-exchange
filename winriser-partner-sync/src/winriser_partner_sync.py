@@ -17,6 +17,7 @@ SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 SHEET_NAME = "合作方新增血量"
 LOGIN_URL = "https://trk.entiretrack.com/trackingassistant/"
 REPORT_URL = "https://trk.entiretrack.com/trackingassistant/viewdailyinstallinfo.aspx"
+EXPAND_URL = "https://trk.entiretrack.com/trackingassistant/ajax/fetchDailyInstallinfo.aspx"
 HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
 PARTNER = "Winriser"
 SOURCE_TO_OPERATION = {
@@ -73,16 +74,7 @@ def login(session, secret):
         raise RuntimeError("Tracker login was not accepted")
 
 
-def source_option_value(select, source_name):
-    normalized = source_name.strip().lower()
-    for option in select.select("option"):
-        label = option.get_text(" ", strip=True).lower()
-        if label == normalized or label.startswith(normalized + " - "):
-            return option.get("value")
-    raise RuntimeError(f"Tracker source selector does not contain {source_name}")
-
-
-def fetch_report(session, source_name):
+def fetch_parent_report(session):
     response = session.get(REPORT_URL, timeout=30)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
@@ -92,24 +84,66 @@ def fetch_report(session, source_name):
     if not source or not report_date or not submit:
         raise RuntimeError("Tracker report controls changed")
     data = form_data(soup)
-    data.update({
-        source["name"]: source_option_value(source, source_name),
-        report_date["name"]: "3",
-        submit["name"]: submit.get("value", "View Report"),
-    })
+    data.update({source["name"]: "0", report_date["name"]: "3", submit["name"]: submit.get("value", "View Report")})
     response = session.post(REPORT_URL, data=data, timeout=30)
     response.raise_for_status()
     return response.text
 
 
-def parse_report(html, cutoff):
+def fetch_child_sources(session, partner_id, day):
+    response = session.post(
+        EXPAND_URL,
+        data={
+            "PartnerId": str(partner_id), "SourceId": "0",
+            "dateFrom": day.isoformat(), "dateTo": day.isoformat(),
+            "ExpandPartner": "1", "ExpandSrc": "0", "ExpandCamp": "0", "ExpandPub": "0",
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.text
+
+
+def parse_parent_rows(html, cutoff):
     soup = BeautifulSoup(html, "html.parser")
     expected = ("Date", "Source", "Install Count", "Spend-PPI($)")
-    table = next((table for table in soup.find_all("table") if expected == tuple(cell.get_text(" ", strip=True) for cell in table.find_all("th")[-4:])), None)
-    if table is None:
+    tables = soup.find_all("table")
+    table = next((table for table in tables if expected == tuple(cell.get_text(" ", strip=True) for cell in table.find_all("th")[-4:])), None)
+    if tables and table is None:
         raise RuntimeError("Tracker report table headers changed")
+    report_rows = table.find_all("tr") if table else soup.find_all("tr")
+    if not report_rows:
+        raise RuntimeError("Tracker child-source response has no rows")
     rows = {}
-    for tr in table.find_all("tr"):
+    for tr in report_rows:
+        cells = [cell.get_text(" ", strip=True) for cell in tr.find_all("td")]
+        if len(cells) < 5:
+            continue
+        day_text, source, _, _ = cells[-4:]
+        if source != "WPS":
+            continue
+        day = parse_day(day_text)
+        if day > cutoff:
+            continue
+        key = tr.select_one("input[name$='$key']")
+        if key is None or not key.get("value"):
+            raise RuntimeError(f"Tracker WPS parent key is missing for {day}")
+        if day in rows:
+            raise RuntimeError(f"Tracker has duplicate WPS parent rows for {day}")
+        rows[day] = key["value"]
+    if not rows:
+        raise RuntimeError("Tracker returned no WPS parent rows")
+    return rows
+
+
+def parse_report(html, cutoff):
+    soup = BeautifulSoup(html, "html.parser")
+    # The Tracker expand endpoint returns bare <tr> fragments rather than a table.
+    rows = {}
+    report_rows = soup.find_all("tr")
+    if not report_rows:
+        raise RuntimeError("Tracker child-source response has no rows")
+    for tr in report_rows:
         cells = [cell.get_text(" ", strip=True) for cell in tr.find_all("td")]
         if len(cells) < 5 or cells[-4] == "Date":
             continue
@@ -243,22 +277,19 @@ def main():
     with requests.Session() as session:
         session.headers["User-Agent"] = "WPS partner data sync/1.0"
         login(session, secret)
+        parents = parse_parent_rows(fetch_parent_report(session), cutoff)
         source = {}
-        unavailable_sources = []
-        for source_name in SOURCE_TO_OPERATION:
-            child_rows = parse_report(fetch_report(session, source_name), cutoff)
-            if not child_rows:
-                unavailable_sources.append(source_name)
-            source.update(child_rows)
+        for day, partner_id in parents.items():
+            source.update(parse_report(fetch_child_sources(session, partner_id, day), cutoff))
     if not source:
-        raise RuntimeError("Tracker returned no verified Winriser rows for: " + ", ".join(SOURCE_TO_OPERATION))
+        raise RuntimeError("Tracker returned no verified Winriser child-source rows")
     service = sheets_service(service_json)
     headers, target_rows = get_sheet(service)
     updates, appends, overwrites = plan_writes(headers, target_rows, source, args.allow_overwrite)
     if updates:
         service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
     append_rows(service, headers, appends)
-    print(json.dumps({"source_records": [{"date": day.isoformat(), "operation": operation} for day, operation in sorted(source)], "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites, "unavailable_sources": unavailable_sources}, ensure_ascii=False))
+    print(json.dumps({"source_records": [{"date": day.isoformat(), "operation": operation} for day, operation in sorted(source)], "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

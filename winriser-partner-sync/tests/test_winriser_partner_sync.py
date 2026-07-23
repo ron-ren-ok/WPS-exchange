@@ -10,12 +10,12 @@ SPEC.loader.exec_module(WINRISER)
 
 
 class WinriserTests(unittest.TestCase):
-    def test_resolves_child_source_selector_values(self):
-        soup = WINRISER.BeautifulSoup("""
-            <select><option value="0">All Source</option><option value="6888">wnrwpsofc - Winriser</option><option value="7777">wnrwpsofc_exchange</option></select>
-        """, "html.parser")
-        self.assertEqual(WINRISER.source_option_value(soup.select_one("select"), "wnrwpsofc"), "6888")
-        self.assertEqual(WINRISER.source_option_value(soup.select_one("select"), "wnrwpsofc_exchange"), "7777")
+    def test_parses_wps_parent_rows_and_ids(self):
+        html = """
+        <table><tr><th></th><th>Date</th><th>Source</th><th>Install Count</th><th>Spend-PPI($)</th></tr>
+        <tr><td><input name="ctl00$ContentPlaceHolder1$grdSource$ctl02$key" value="527"></td><td>2026-07-14</td><td>WPS</td><td>100</td><td>50</td></tr></table>
+        """
+        self.assertEqual(WINRISER.parse_parent_rows(html, date(2026, 7, 14)), {date(2026, 7, 14): "527"})
 
     def test_parses_only_mapped_wps_child_sources(self):
         html = """
@@ -23,7 +23,7 @@ class WinriserTests(unittest.TestCase):
         <tr><td>-</td><td>2026-07-14</td><td>WPS</td><td>100</td><td>50</td></tr>
         <tr><td>-</td><td>2026-07-14</td><td>wnrwpsofc</td><td>12</td><td>3.5</td></tr>
         <tr><td>-</td><td>2026-07-14</td><td>wnrwpsofc_exchange</td><td>8</td><td>4</td></tr>
-        <tr><td>-</td><td>2026-07-14</td><td>wnrwpsofc2</td><td>80</td><td>40</td></tr></table>
+        <tr><td>-</td><td>2026-07-14</td><td>wnrwpsofc2</td><td>80</td><td>40</td></tr>
         """
         rows = WINRISER.parse_report(html, date(2026, 7, 14))
         self.assertEqual(rows, {
