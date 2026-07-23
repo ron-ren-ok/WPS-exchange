@@ -14,6 +14,7 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(SYNC.normalize_oauth_token("abc"), "abc")
         self.assertEqual(SYNC.normalize_oauth_token(" OAuth abc "), "abc")
         self.assertEqual(SYNC.normalize_oauth_token("OAuth\r\nabc\r\n"), "abc")
+
     def test_source_coverage_allows_only_a_leading_history_gap(self):
         start = date(2025, 9, 25)
         end = date(2026, 2, 13)
@@ -22,28 +23,45 @@ class SyncTests(unittest.TestCase):
         with_gap = {date(2026, 2, 11): [1, 1], date(2026, 2, 13): [1, 1]}
         SYNC.validate_source_coverage(with_gap, start, end)
         self.assertEqual(with_gap[date(2026, 2, 12)], [0, 0])
+
     def test_dynamic_column_names(self):
         self.assertEqual(SYNC.column_name(0), "A")
         self.assertEqual(SYNC.column_name(25), "Z")
         self.assertEqual(SYNC.column_name(26), "AA")
 
+    def test_plans_append_for_new_long_format_record(self):
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        profile = {"surface": "换量弹窗"}
+        updates, appends, overwrites = SYNC.planned_writes(
+            headers, {}, {date(2026, 7, 14): {"new_users": 178, "blood_volume": 178}}, profile, False
+        )
+        self.assertEqual(updates, [])
+        self.assertEqual(overwrites, [])
+        self.assertEqual(appends, [{"日期": date(2026, 7, 14), "合作方": "Yandex", "运营位": "换量弹窗", "新增": 178, "血量": 178}])
+
     def test_nonblank_difference_requires_explicit_override(self):
-        headers = ["日期", "Yandex换量弹窗新增", "Yandex换量弹窗血量"]
-        rows = {date(2026, 7, 14): {"row": 294, "values": ["2026/7/14", "146", "146"]}}
-        profile = {"target_headers": ["Yandex换量弹窗新增", "Yandex换量弹窗血量"]}
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        rows = {(date(2026, 7, 14), "Yandex", "换量弹窗"): {"row": 294, "values": [46217, "Yandex", "换量弹窗", 146, 146]}}
+        profile = {"surface": "换量弹窗"}
         source = {date(2026, 7, 14): {"new_users": 178, "blood_volume": 178}}
         with self.assertRaises(RuntimeError):
-            SYNC.planned_updates(headers, rows, source, profile, False)
-        self.assertEqual(len(SYNC.planned_updates(headers, rows, source, profile, True)), 2)
-
+            SYNC.planned_writes(headers, rows, source, profile, False)
+        updates, appends, overwrites = SYNC.planned_writes(headers, rows, source, profile, True)
+        self.assertEqual(len(updates), 2)
+        self.assertEqual(appends, [])
+        self.assertEqual(len(overwrites), 2)
 
     def test_missing_data_backfill_starts_at_earliest_gap(self):
-        headers = ["日期", "Yandex换量弹窗新增", "Yandex换量弹窗血量", "Yandex气泡新增", "Yandex气泡血量"]
-        profiles = [{"target_headers": headers[1:3]}, {"target_headers": headers[3:5]}]
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        profiles = [{"surface": "换量弹窗"}, {"surface": "气泡"}]
         rows = {
-            date(2026, 7, 13): {"values": ["2026/7/13", "", "", "153", "153"]},
-            date(2026, 7, 14): {"values": ["2026/7/14", "178", "178", "158", "158"]},
+            (date(2026, 7, 13), "Yandex", "换量弹窗"): {"values": [46216, "Yandex", "换量弹窗", "", ""]},
+            (date(2026, 7, 13), "Yandex", "气泡"): {"values": [46216, "Yandex", "气泡", 153, 153]},
+            (date(2026, 7, 14), "Yandex", "换量弹窗"): {"values": [46217, "Yandex", "换量弹窗", 178, 178]},
+            (date(2026, 7, 14), "Yandex", "气泡"): {"values": [46217, "Yandex", "气泡", 158, 158]},
         }
         self.assertEqual(SYNC.first_missing_day(headers, rows, profiles, date(2026, 7, 15)), date(2026, 7, 13))
+
+
 if __name__ == "__main__":
     unittest.main()

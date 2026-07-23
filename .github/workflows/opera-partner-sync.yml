@@ -34,6 +34,7 @@ jobs:
           python src/opera_partner_sync.py
           ${{ inputs.start_date && format('--start-date {0}', inputs.start_date) || '' }}
           ${{ inputs.end_date && format('--end-date {0}', inputs.end_date) || '' }}
+          --allow-overwrite
         env:
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
           GMAIL_OAUTH_CLIENT_JSON: ${{ secrets.GMAIL_OAUTH_CLIENT_JSON }}

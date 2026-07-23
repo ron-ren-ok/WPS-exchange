@@ -6,22 +6,20 @@ import json
 import os
 import re
 import sys
-from datetime import date, datetime, timedelta
-from pathlib import Path
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pdfplumber
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from partner_sync_common.sheet_dates import ensure_date_rows, first_missing_date
-
 SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
-SHEET_NAME = "合作方返回数据"
+SHEET_NAME = "合作方新增血量"
 SENDER = "noreply@lookermail.com"
 SUBJECT = "Opera for Computers distribution partner dashboard"
+HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
+PARTNER = "Opera"
 SURFACES = {
-    "popup": {"campaign": "wpstest2/opera.exe", "headers": ("Opera换量弹窗新增", "Opera换量弹窗血量")},
-    "bubble": {"campaign": "wpstest", "headers": ("Opera气泡新增", "Opera气泡血量")},
+    "popup": {"campaign": "wpstest2/opera.exe", "operation": "换量弹窗"},
+    "bubble": {"campaign": "wpstest", "operation": "气泡"},
 }
 
 
@@ -151,50 +149,109 @@ def col_name(index):
         index -= 1
 
 
+def value_at(row, column):
+    values = row["values"] if isinstance(row, dict) else row
+    return values[column] if column < len(values) else ""
+
+
+def values_match(current, wanted):
+    try:
+        return abs(float(current) - float(wanted)) < 1e-9
+    except (TypeError, ValueError):
+        return str(current).replace(",", "") == str(wanted)
+
+
 def get_sheet(service):
-    values = service.spreadsheets().values().get(spreadsheetId=SHEET_ID, range=f"'{SHEET_NAME}'!A1:ZZ10000", valueRenderOption="UNFORMATTED_VALUE", dateTimeRenderOption="SERIAL_NUMBER").execute().get("values", [])
-    if not values:
-        raise RuntimeError("target sheet is empty")
-    required = ["日期", *(h for spec in SURFACES.values() for h in spec["headers"])]
-    if len(values[0]) != len(set(values[0])) or any(h not in values[0] for h in required):
-        raise RuntimeError("target sheet headers are missing or duplicated")
+    values = service.spreadsheets().values().get(
+        spreadsheetId=SHEET_ID,
+        range=f"'{SHEET_NAME}'!A1:E10000",
+        valueRenderOption="UNFORMATTED_VALUE",
+        dateTimeRenderOption="SERIAL_NUMBER",
+    ).execute().get("values", [])
+    if not values or len(values[0]) != len(set(values[0])) or any(header not in values[0] for header in HEADERS):
+        raise RuntimeError("long-format target headers are missing or duplicated")
+    headers = values[0]
+    positions = {header: headers.index(header) for header in HEADERS}
     rows = {}
     for row_number, row in enumerate(values[1:], start=2):
-        if row and row[0]:
-            day = parse_day(row[0])
-            if day in rows:
-                raise RuntimeError(f"duplicate date row: {day}")
-            rows[day] = {"row": row_number, "values": row}
-    return values[0], rows
+        if not row or not value_at(row, positions["日期"]):
+            continue
+        key = (
+            parse_day(value_at(row, positions["日期"])),
+            str(value_at(row, positions["合作方"])).strip(),
+            str(value_at(row, positions["运营位"])).strip(),
+        )
+        if key in rows:
+            raise RuntimeError(f"duplicate long-format record: {key}")
+        rows[key] = {"row": row_number, "values": row}
+    return headers, rows
 
 
-def value_at(row, column):
-    return row["values"][column] if column < len(row["values"]) else ""
+def first_missing(rows, cutoff):
+    candidates = []
+    for spec in SURFACES.values():
+        days = sorted(day for day, partner, operation in rows if partner == PARTNER and operation == spec["operation"] and day <= cutoff)
+        if not days:
+            continue
+        expected = {days[0] + timedelta(days=index) for index in range((cutoff - days[0]).days + 1)}
+        missing = expected - set(days)
+        candidates.append(min(missing) if missing else cutoff)
+    return min(candidates) if candidates else cutoff
 
 
-def first_missing(headers, rows, cutoff):
-    missing = [day for day, row in rows.items() if day <= cutoff and any(value_at(row, headers.index(h)) in ("", None) for spec in SURFACES.values() for h in spec["headers"])]
-    return min([*missing, first_missing_date(rows, cutoff)])
+def plan_writes(headers, existing_rows, sources, allow_overwrite):
+    positions = {header: headers.index(header) for header in HEADERS}
+    updates, appends, conflicts, overwrites = [], [], [], []
+    for surface, source in sources.items():
+        operation = SURFACES[surface]["operation"]
+        for day, metrics in sorted(source.items()):
+            row = existing_rows.get((day, PARTNER, operation))
+            if row is None:
+                appends.append({"日期": day, "合作方": PARTNER, "运营位": operation, "新增": metrics["new_users"], "血量": metrics["blood_volume"]})
+                continue
+            for header, metric in (("新增", "new_users"), ("血量", "blood_volume")):
+                current, wanted = value_at(row, positions[header]), metrics[metric]
+                if current in ("", None):
+                    updates.append({"range": f"'{SHEET_NAME}'!{col_name(positions[header])}{row['row']}", "values": [[wanted]]})
+                elif not values_match(current, wanted):
+                    detail = f"{day} {PARTNER}/{operation}/{header}: sheet={current}, source={wanted}"
+                    if allow_overwrite:
+                        updates.append({"range": f"'{SHEET_NAME}'!{col_name(positions[header])}{row['row']}", "values": [[wanted]]})
+                        overwrites.append(detail)
+                    else:
+                        conflicts.append(detail)
+    if conflicts:
+        raise RuntimeError("refusing to overwrite conflicts: " + "; ".join(conflicts))
+    return updates, appends, overwrites
 
 
-def updates_for(headers, rows, surface, source):
-    updates = []
-    for day, metrics in sorted(source.items()):
-        row = rows.get(day)
-        if not row:
-            raise RuntimeError(f"missing target date row: {day}")
-        for header, key in zip(SURFACES[surface]["headers"], ("new_users", "blood_volume")):
-            column, wanted = headers.index(header), metrics[key]
-            current = value_at(row, column)
-            if current in ("", None) or str(current).replace(",", "") != str(wanted):
-                updates.append({"range": f"'{SHEET_NAME}'!{col_name(column)}{row['row']}", "values": [[wanted]]})
-    return updates
+def append_rows(service, headers, records):
+    if not records:
+        return
+    positions = {header: headers.index(header) for header in HEADERS}
+    values = []
+    for record in records:
+        row = [""] * len(headers)
+        row[positions["日期"]] = record["日期"].isoformat()
+        row[positions["合作方"]] = record["合作方"]
+        row[positions["运营位"]] = record["运营位"]
+        row[positions["新增"]] = record["新增"]
+        row[positions["血量"]] = record["血量"]
+        values.append(row)
+    service.spreadsheets().values().append(
+        spreadsheetId=SHEET_ID,
+        range=f"'{SHEET_NAME}'!A1:{col_name(len(headers) - 1)}",
+        valueInputOption="USER_ENTERED",
+        insertDataOption="INSERT_ROWS",
+        body={"majorDimension": "ROWS", "values": values},
+    ).execute()
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
+    parser.add_argument("--allow-overwrite", action="store_true")
     args = parser.parse_args()
     secrets = {name: os.environ.get(name) for name in ("GMAIL_OAUTH_CLIENT_JSON", "GMAIL_REFRESH_TOKEN", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON")}
     if not all(secrets.values()):
@@ -202,25 +259,21 @@ def main():
     end = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
     sheets = sheets_service(secrets["GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"])
     headers, target_rows = get_sheet(sheets)
-    start = parse_day(args.start_date) if args.start_date else first_missing(headers, target_rows, end)
+    start = parse_day(args.start_date) if args.start_date else first_missing(target_rows, end)
     if start > end:
         raise RuntimeError("start date is after end date")
     gmail = gmail_service(secrets["GMAIL_OAUTH_CLIENT_JSON"], secrets["GMAIL_REFRESH_TOKEN"])
     sources = {surface: source_rows(gmail, surface, start, end) for surface in SURFACES}
-    date_rows_added = ensure_date_rows(sheets, SHEET_ID, SHEET_NAME, target_rows, end)
-    if date_rows_added:
-        headers, target_rows = get_sheet(sheets)
-    writes = []
-    for surface, source in sources.items():
-        writes.extend(updates_for(headers, target_rows, surface, source))
-    if writes:
-        sheets.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": writes}).execute()
-    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "date_rows_added": [day.isoformat() for day in date_rows_added], "updated_cells": len(writes)}, ensure_ascii=False))
+    updates, appends, overwrites = plan_writes(headers, target_rows, sources, args.allow_overwrite)
+    if updates:
+        sheets.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
+    append_rows(sheets, headers, appends)
+    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, ValueError, OSError) as exc:
+    except (RuntimeError, ValueError, json.JSONDecodeError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(2)

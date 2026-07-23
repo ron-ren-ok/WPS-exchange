@@ -9,10 +9,6 @@
     "pack_ids":  [
                      1157518
                  ],
-    "target_headers":  [
-                           "Yandex气泡新增",
-                           "Yandex气泡血量"
-                       ],
     "filter_fingerprint":  "9325d659abec94f830d304b6e4a47ee6f2c62219be2c56deb86b879472b34b5d",
     "template_sha256":  "99d3447b5ee3a6afae4a1deb002a3b2435ed0e75bf35a13de622a94ba50aa1e9",
     "reconciliation_samples":  [

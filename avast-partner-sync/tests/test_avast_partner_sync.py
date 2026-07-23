@@ -36,6 +36,38 @@ class AvastTests(unittest.TestCase):
             "Country Code 2026-07-14 2026-07-15 Grand Total\nTotal $178 $173 $351",
         )
         self.assertEqual(AVAST.parse_avast_page(repeated)[date(2026, 7, 14)]["new_users"], 178)
+    def test_plans_append_for_new_h5_long_format_record(self):
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        updates, appends, overwrites = AVAST.plan_writes(
+            headers,
+            {},
+            {"uninstall_h5": {date(2026, 7, 21): {"new_users": 12, "blood_volume": 3.5}}},
+            allow_overwrite=False,
+        )
+        self.assertEqual(updates, [])
+        self.assertEqual(overwrites, [])
+        self.assertEqual(appends, [{
+            "日期": date(2026, 7, 21),
+            "合作方": "Avast",
+            "运营位": "卸载后引导H5",
+            "新增": 12,
+            "血量": 3.5,
+        }])
+
+    def test_updates_existing_long_format_record(self):
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        key = (date(2026, 7, 21), "Avast", "气泡")
+        rows = {key: {"row": 99, "values": [46224, "Avast", "气泡", 10, 2]}}
+        updates, appends, overwrites = AVAST.plan_writes(
+            headers,
+            rows,
+            {"bubble": {date(2026, 7, 21): {"new_users": 11, "blood_volume": 2}}},
+            allow_overwrite=True,
+        )
+        self.assertEqual(appends, [])
+        self.assertEqual(len(updates), 1)
+        self.assertIn("D99", updates[0]["range"])
+        self.assertEqual(len(overwrites), 1)
     def test_column_names(self):
         self.assertEqual(AVAST.col_name(0), "A")
         self.assertEqual(AVAST.col_name(25), "Z")

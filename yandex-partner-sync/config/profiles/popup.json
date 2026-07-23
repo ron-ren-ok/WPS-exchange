@@ -10,10 +10,6 @@
                      1052697,
                      1158318
                  ],
-    "target_headers":  [
-                           "Yandex换量弹窗新增",
-                           "Yandex换量弹窗血量"
-                       ],
     "filter_fingerprint":  "d66ec1daec3ed4d601c7ca90b2943b78159496fb9f9bc2841418c5ce90924458",
     "template_sha256":  "99d3447b5ee3a6afae4a1deb002a3b2435ed0e75bf35a13de622a94ba50aa1e9",
     "reconciliation_samples":  [

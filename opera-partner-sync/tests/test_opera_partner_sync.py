@@ -35,6 +35,37 @@ class OperaTests(unittest.TestCase):
         self.assertEqual(OPERA.col_name(0), "A")
         self.assertEqual(OPERA.col_name(26), "AA")
 
+    def test_plans_append_for_new_long_format_records(self):
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        updates, appends, overwrites = OPERA.plan_writes(
+            headers,
+            {},
+            {"popup": {date(2026, 7, 12): {"new_users": 10, "blood_volume": 2.5}}},
+            allow_overwrite=False,
+        )
+        self.assertEqual(updates, [])
+        self.assertEqual(overwrites, [])
+        self.assertEqual(appends, [{
+            "日期": date(2026, 7, 12),
+            "合作方": "Opera",
+            "运营位": "换量弹窗",
+            "新增": 10,
+            "血量": 2.5,
+        }])
+
+    def test_updates_existing_long_format_record(self):
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        rows = {(date(2026, 7, 12), "Opera", "气泡"): {"row": 99, "values": [46216, "Opera", "气泡", 10, 2]}}
+        updates, appends, overwrites = OPERA.plan_writes(
+            headers,
+            rows,
+            {"bubble": {date(2026, 7, 12): {"new_users": 11, "blood_volume": 2}}},
+            allow_overwrite=True,
+        )
+        self.assertEqual(appends, [])
+        self.assertEqual(len(updates), 1)
+        self.assertIn("D99", updates[0]["range"])
+        self.assertEqual(len(overwrites), 1)
 
 if __name__ == "__main__":
     unittest.main()
