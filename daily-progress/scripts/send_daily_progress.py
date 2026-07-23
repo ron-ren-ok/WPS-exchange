@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare WPS daily-progress cards from the Google Sheet without AI."""
+"""Prepare WPS daily-progress cards from Google Sheets without AI."""
 
 from __future__ import annotations
 
@@ -7,9 +7,11 @@ import argparse
 import calendar
 import json
 import os
+import re
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import google.auth.transport.requests
 from google.oauth2 import service_account
@@ -18,14 +20,10 @@ from google.oauth2 import service_account
 SPREADSHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 SHEET_NAME = "日进度追踪"
 SOURCE_SHEET_NAME = "合作方返回数据"
-SHEET_URL = (
-    "https://docs.google.com/spreadsheets/d/"
-    f"{SPREADSHEET_ID}/edit#gid=1377957533"
-)
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=1377957533"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-RAW_UNIT_DIVISOR = 10_000
-REVENUE_SOURCE_COLUMNS = (4, 6, 8, 10, 12, 14, 16)  # E,G,I,K,M,O,Q
-USERS_SOURCE_COLUMNS = (1, 2)  # B,C
+BJ_TZ = ZoneInfo("Asia/Shanghai")
+UNIT_DIVISOR = 10_000
 
 
 def required(name: str) -> str:
@@ -42,7 +40,9 @@ def row_value(rows: list[list[dict]], row: int, column: int) -> str:
         raise RuntimeError("The 日进度追踪 summary range is incomplete.") from exc
 
 
-def cell_number(cell: dict) -> float | None:
+def cell_number(cell: dict | None) -> float | None:
+    if not cell:
+        return None
     effective = cell.get("effectiveValue", {})
     if effective.get("numberValue") is not None:
         return float(effective["numberValue"])
@@ -55,11 +55,9 @@ def cell_number(cell: dict) -> float | None:
         return None
 
 
-def cell_date(cell: dict) -> date | None:
-    serial = cell.get("effectiveValue", {}).get("numberValue")
-    if serial is None:
-        return None
-    return date(1899, 12, 30) + timedelta(days=int(float(serial)))
+def cell_date(cell: dict | None) -> date | None:
+    serial = cell.get("effectiveValue", {}).get("numberValue") if cell else None
+    return date(1899, 12, 30) + timedelta(days=int(float(serial))) if serial is not None else None
 
 
 def formatted_percent(cell: dict) -> float:
@@ -72,52 +70,76 @@ def formatted_percent(cell: dict) -> float:
     return value * 100 if 0 <= value <= 1 else value
 
 
-def last_status(rows: list[list[dict]], date_column: int, status_column: int) -> str:
-    for row in reversed(rows):
-        if len(row) > status_column:
-            row_date = row[date_column].get("formattedValue", "").strip()
-            status = row[status_column].get("formattedValue", "").strip()
-            if row_date and status:
-                return status
-    return "状态待核对"
-
-
-def request_rows(session: google.auth.transport.requests.AuthorizedSession, ranges: list[str]) -> list[list[list[dict]]]:
-    """Read one worksheet per request so Google cannot group ranges by sheet."""
+def request_rows(session: google.auth.transport.requests.AuthorizedSession, sheet_range: str) -> list[list[dict]]:
     response = session.get(
         f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}",
         params={
-            "ranges": ranges,
+            "ranges": [sheet_range],
             "includeGridData": "true",
             "fields": "sheets(data(rowData(values(formattedValue,effectiveValue))))",
         },
         timeout=30,
     )
     response.raise_for_status()
-    sheets = response.json().get("sheets", [])
-    grids = [grid for sheet in sheets for grid in sheet.get("data", [])]
-    if len(grids) != len(ranges):
-        raise RuntimeError(f"Google Sheets returned {len(grids)} ranges, expected {len(ranges)}.")
-    return [[row.get("values", []) for row in grid.get("rowData", [])] for grid in grids]
+    grids = [grid for sheet in response.json().get("sheets", []) for grid in sheet.get("data", [])]
+    if len(grids) != 1:
+        raise RuntimeError(f"Google Sheets returned {len(grids)} ranges, expected 1.")
+    return [row.get("values", []) for row in grids[0].get("rowData", [])]
 
 
 def request_values() -> list[list[list[dict]]]:
     info = json.loads(required("GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"))
     credentials = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     session = google.auth.transport.requests.AuthorizedSession(credentials)
-    # Google may consolidate multiple ranges from a worksheet into one GridData.
-    # One request per range preserves each range's row offsets and ordering.
-    (summary,) = request_rows(session, [f"{SHEET_NAME}!A1:P6"])
-    (revenue,) = request_rows(session, [f"{SHEET_NAME}!A10:I40"])
-    (users,) = request_rows(session, [f"{SHEET_NAME}!J10:R40"])
-    (source,) = request_rows(session, [f"{SOURCE_SHEET_NAME}!A1:Q1000"])
-    return [summary, revenue, users, source]
+    return [
+        request_rows(session, f"{SHEET_NAME}!A1:P6"),
+        request_rows(session, f"{SHEET_NAME}!A10:I40"),
+        request_rows(session, f"{SHEET_NAME}!J10:R40"),
+        request_rows(session, f"{SOURCE_SHEET_NAME}!A1:ZZ1000"),
+    ]
 
 
-def card_text(summary: list[list[dict]], revenue_rows: list[list[dict]], users_rows: list[list[dict]]) -> str:
-    revenue_status = last_status(revenue_rows, 0, 8)
-    users_status = last_status(users_rows, 0, 8)
+def partner_name(header: str) -> str | None:
+    match = re.match(r"^(.+?)(?:换量弹窗|气泡)(?:新增|血量)$", header)
+    if match:
+        return match.group(1)
+    match = re.match(r"^(.+?)(?:新增|血量)$", header)
+    return match.group(1) if match else None
 
+
+def partner_columns(source_rows: list[list[dict]]) -> dict[str, dict[str, tuple[int, ...]]]:
+    if not source_rows:
+        raise RuntimeError("合作方返回数据 is empty.")
+    grouped: dict[str, dict[str, list[int]]] = {}
+    for index, cell in enumerate(source_rows[0][1:], start=1):
+        header = cell.get("formattedValue", "").strip()
+        name = partner_name(header)
+        if not name:
+            continue
+        metric = "revenue" if header.endswith("血量") else "new"
+        grouped.setdefault(name, {"new": [], "revenue": []})[metric].append(index)
+    return {name: {metric: tuple(columns) for metric, columns in values.items()} for name, values in grouped.items()}
+
+
+def source_row_for_day(source_rows: list[list[dict]], wanted: date) -> list[dict] | None:
+    for row in source_rows[1:]:
+        if row and cell_date(row[0]) == wanted:
+            return row
+    return None
+
+
+def incomplete_partners(source_rows: list[list[dict]], cutoff: date) -> list[str]:
+    """A partner is complete when at least one of its positions returned yesterday."""
+    row = source_row_for_day(source_rows, cutoff)
+    incomplete: list[str] = []
+    for name, metrics in partner_columns(source_rows).items():
+        columns = metrics["new"] + metrics["revenue"]
+        if not row or not any(cell_number(row[column]) is not None for column in columns if len(row) > column):
+            incomplete.append(name)
+    return incomplete
+
+
+def card_text(summary: list[list[dict]], source_rows: list[list[dict]], report_date: date) -> str:
     def metric(row: int, label: str = "") -> str:
         prefix = f"{label} " if label else ""
         return (
@@ -127,76 +149,62 @@ def card_text(summary: list[list[dict]], revenue_rows: list[list[dict]], users_r
             f"后续日均需完成 {row_value(summary, row, 11)}**"
         )
 
-    incomplete: list[str] = []
-    for status in (revenue_status, users_status):
-        detail = status.removeprefix("数据不全：").strip()
-        if detail and detail not in ("完整", "状态待核对") and detail not in incomplete:
-            incomplete.append(detail)
-    incomplete_note = f"\n\n➡️**部分数据不全：** {'；'.join(incomplete)}" if incomplete else ""
+    incomplete = incomplete_partners(source_rows, report_date - timedelta(days=1))
+    status = "✅ 数据完整" if not incomplete else f"⚠️ {'；'.join(f'{name}数据不全' for name in incomplete)}"
     return (
         "➡️**血量（万美元）**\n\n"
         f"{metric(3)}\n\n"
         "➡️**新增（万）**\n\n"
-        f"{metric(5, '360')}"
-        f"{incomplete_note}\n\n[查看日进度追踪]({SHEET_URL})"
+        f"{metric(5, '360')}\n\n"
+        f"➡️**数据状态：** {status}\n\n[查看日进度追踪]({SHEET_URL})"
     )
 
 
-def source_daily_series(
-    source_rows: list[list[dict]], report_date: date, source_columns: tuple[int, ...]
-) -> list[dict[int, float]]:
-    """Return one raw daily series per source column for the report month.
-
-    Blank cells remain missing and are forecast-filled; a numeric zero remains an
-    observed zero. This preserves the user's source-by-source forecasting rule.
-    """
-    series_by_column = [dict() for _ in source_columns]
+def partner_series(source_rows: list[list[dict]], columns: tuple[int, ...], report_date: date) -> dict[date, float]:
+    """Daily partner total. Any reported position is counted; blank positions are not zero-filled."""
+    values: dict[date, float] = {}
     for row in source_rows[1:]:
-        if not row:
+        row_date = cell_date(row[0] if row else None)
+        if not row_date or (row_date.year, row_date.month) != (report_date.year, report_date.month) or row_date >= report_date:
             continue
-        row_date = cell_date(row[0]) if row else None
-        if not row_date or (row_date.year, row_date.month) != (report_date.year, report_date.month):
-            continue
-        if row_date >= report_date:
-            continue
-        for index, source_column in enumerate(source_columns):
-            if len(row) <= source_column:
-                continue
-            value = cell_number(row[source_column])
-            if value is not None:
-                series_by_column[index][row_date.day] = value / RAW_UNIT_DIVISOR
-    return series_by_column
+        daily = [cell_number(row[column]) for column in columns if len(row) > column and cell_number(row[column]) is not None]
+        if daily:
+            values[row_date] = sum(daily) / UNIT_DIVISOR
+    return values
 
 
-def column_projection(series: dict[int, float], report_date: date) -> tuple[float, float]:
-    """Fill only missing days with each source column's latest 14-day mean."""
-    days_in_month = calendar.monthrange(report_date.year, report_date.month)[1]
-    completed_days = report_date.day - 1
-    observed = [series[day] for day in range(1, completed_days + 1) if day in series]
-    if not observed:
+def project_partner(series: dict[date, float], report_date: date) -> tuple[float, float]:
+    """Fill from a partner's last returned date through yesterday and month-end."""
+    if not series:
         return 0.0, 0.0
-    average = sum(observed[-14:]) / min(len(observed), 14)
-    cumulative = sum(series.get(day, average) for day in range(1, completed_days + 1))
-    month_total = cumulative + average * (days_in_month - completed_days)
-    return cumulative, month_total
+    last_actual = max(series)
+    recent = [value for day, value in sorted(series.items()) if day <= last_actual][-14:]
+    average = sum(recent) / len(recent)
+    actual_total = sum(value for day, value in series.items() if day <= last_actual)
+    measured_through_yesterday = actual_total + average * max(0, (report_date - timedelta(days=1) - last_actual).days)
+    days_in_month = calendar.monthrange(report_date.year, report_date.month)[1]
+    month_total = actual_total + average * max(0, days_in_month - last_actual.day)
+    return measured_through_yesterday, month_total
 
 
-def forecast_metric(
-    summary: list[list[dict]], summary_row: int, source_rows: list[list[dict]],
-    source_columns: tuple[int, ...], report_date: date, label: str = ""
-) -> str:
+def forecast_metric(summary: list[list[dict]], summary_row: int, source_rows: list[list[dict]], report_date: date, metric: str, label: str = "") -> str:
     target = cell_number(summary[summary_row][1])
     if target is None or target <= 0:
         raise RuntimeError("The 日进度追踪 target cell is not a positive number.")
     cumulative = 0.0
     month_total = 0.0
-    for series in source_daily_series(source_rows, report_date, source_columns):
-        current, projected = column_projection(series, report_date)
+    for partner, columns in partner_columns(source_rows).items():
+        if metric == "new" and partner != "360":
+            continue
+        series = partner_series(source_rows, columns[metric], report_date)
+        current, projected = project_partner(series, report_date)
         cumulative += current
         month_total += projected
     completion_rate = cumulative / target * 100
     projected_rate = month_total / target * 100
-    time_progress = formatted_percent(summary[summary_row][13])
+    completed_days = max(report_date.day - 1, 0)
+    days_in_month = calendar.monthrange(report_date.year, report_date.month)[1]
+    time_progress = completed_days / days_in_month * 100
     gap = completion_rate - time_progress
     pace = "领先" if gap >= 0 else "落后"
     prefix = f"{label} " if label else ""
@@ -207,16 +215,12 @@ def forecast_metric(
     )
 
 
-def forecast_text(summary: list[list[dict]], source_rows: list[list[dict]]) -> str:
-    cutoff_date = cell_date(summary[1][4])
-    if cutoff_date is None:
-        raise RuntimeError("The 日进度追踪 data-cutoff date is missing.")
-    report_date = cutoff_date + timedelta(days=1)
+def forecast_text(summary: list[list[dict]], source_rows: list[list[dict]], report_date: date) -> str:
     return (
         "➡️**血量（万美元）**\n\n"
-        f"{forecast_metric(summary, 3, source_rows, REVENUE_SOURCE_COLUMNS, report_date)}\n\n"
+        f"{forecast_metric(summary, 3, source_rows, report_date, 'revenue')}\n\n"
         "➡️**新增（万）**\n\n"
-        f"{forecast_metric(summary, 5, source_rows, USERS_SOURCE_COLUMNS, report_date, '360')}\n\n"
+        f"{forecast_metric(summary, 5, source_rows, report_date, 'new', '360')}\n\n"
         f"[查看日进度追踪]({SHEET_URL})"
     )
 
@@ -226,10 +230,10 @@ def main() -> None:
     parser.add_argument("--output", required=True, help="UTF-8 file path for the daily-progress card body")
     parser.add_argument("--forecast-output", required=True, help="UTF-8 file path for the forecast card body")
     args = parser.parse_args()
-
-    summary, revenue_rows, users_rows, source_rows = request_values()
-    Path(args.output).write_text(card_text(summary, revenue_rows, users_rows), encoding="utf-8")
-    Path(args.forecast_output).write_text(forecast_text(summary, source_rows), encoding="utf-8")
+    summary, _revenue_rows, _users_rows, source_rows = request_values()
+    report_date = datetime.now(BJ_TZ).date()
+    Path(args.output).write_text(card_text(summary, source_rows, report_date), encoding="utf-8")
+    Path(args.forecast_output).write_text(forecast_text(summary, source_rows, report_date), encoding="utf-8")
     print("WPS daily-progress and forecast content prepared.")
 
 
