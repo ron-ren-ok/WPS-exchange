@@ -43,4 +43,4 @@ jobs:
         run: |
           $cardText = Get-Content -LiteralPath "$env:RUNNER_TEMP/acquisition-progress.md" -Raw -Encoding utf8
           $beijingDate = [DateTime]::UtcNow.AddHours(8).ToString('yyyy-MM-dd')
-          ./scripts/send-wps-webhook.ps1 -CardTitle '📣导量、三方、Affiliate 达成播报' -CardSubtitle $beijingDate -CardText $cardText -WebhookUrl $env:WPS_WEBHOOK_URL
+          ./scripts/send-wps-webhook.ps1 -CardTitle '📣导量、三方、Affiliate KPI播报' -CardSubtitle $beijingDate -CardText $cardText -WebhookUrl $env:WPS_WEBHOOK_URL
