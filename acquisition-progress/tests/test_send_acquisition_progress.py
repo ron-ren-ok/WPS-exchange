@@ -55,8 +55,14 @@ class AcquisitionProgressTests(unittest.TestCase):
         targets = {"新增": {"第三方": 1, "导量裂变": 1, "AFF联盟": 1}, "MAU": {"三方合作": 1, "导量&裂变": 1, "AFF联盟": 1}}
         with patch.object(REPORT, "target_config", return_value=targets):
             text = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22))
-        self.assertIn("**👉🏻三方**\n\n▪️昨日新增", text)
-        self.assertIn("）\n\n▪️近30天 MAD", text)
+        self.assertIn("**👉🏻三方**\n\n🔴昨日新增", text)
+        self.assertIn("）\n\n🔴近30天 MAD", text)
+        self.assertNotIn("数据截至", text)
+        self.assertNotIn("`", text)
+
+
+    def test_subtitle_includes_send_date_and_elapsed_month_progress(self):
+        self.assertEqual(REPORT.report_subtitle(date(2026, 7, 23), date(2026, 7, 22)), "2026-07-23，时间进度 71.0%")
 
 
 if __name__ == "__main__":

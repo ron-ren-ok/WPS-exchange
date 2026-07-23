@@ -145,9 +145,17 @@ def missing_data_notice(records: list[dict], expected_date: date) -> str | None:
     return None
 
 
-def report_date() -> date:
-    return datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
+def beijing_today() -> date:
+    return datetime.now(ZoneInfo("Asia/Shanghai")).date()
 
+
+def report_date() -> date:
+    return beijing_today() - timedelta(days=1)
+
+
+def report_subtitle(sent_date: date, data_date: date) -> str:
+    days_in_month = calendar.monthrange(data_date.year, data_date.month)[1]
+    return f"{sent_date:%Y-%m-%d}，时间进度 {data_date.day / days_in_month:.1%}"
 
 def weekly_sparkline(series: dict[date, float], latest: date) -> tuple[str, str]:
     buckets = []
@@ -176,7 +184,7 @@ def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]], ex
     targets = target_config(target_rows, latest.month)
     month_start = latest.replace(day=1)
     days_in_month = calendar.monthrange(latest.year, latest.month)[1]
-    blocks = [f"数据截至 **{latest:%Y-%m-%d}**；单位：新增 / MAD 均为万"]
+    blocks = []
     for config in CHANNELS:
         matched = [record for record in records if record["channel"] == config["source"]]
         daily_new: dict[date, float] = defaultdict(float)
@@ -198,9 +206,9 @@ def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]], ex
         sparkline, _ = weekly_sparkline(daily_new, latest)
         blocks.append(
             f"**👉🏻{config['label']}**\n\n"
-            f"▪️昨日新增 **{daily_new[latest]:.2f}万**　|　本月日均 **{daily_actual:.2f}万 / {daily_target:.2f}万** 本月新增 **{month_actual:.2f}万 / {new_target:.2f}万**（{month_actual / new_target:.1%}）\n\n"
-            f"▪️近30天 MAD **{daily_mau[latest]:.2f}万 / {mau_target:.2f}万**（{daily_mau[latest] / mau_target:.1%}）\n\n"
-            f"▪️近12周新增日均 `{sparkline}`"
+            f"🔴昨日新增 **{daily_new[latest]:.2f}万**　|　本月日均 **{daily_actual:.2f}万 / {daily_target:.2f}万** 本月新增 **{month_actual:.2f}万 / {new_target:.2f}万**（{month_actual / new_target:.1%}）\n\n"
+            f"🔴近30天 MAD **{daily_mau[latest]:.2f}万 / {mau_target:.2f}万**（{daily_mau[latest] / mau_target:.1%}）\n\n"
+            f"🔴近12周新增日均 {sparkline}"
         )
     return "\n\n".join(blocks) + f"\n\n[查看三方&导量运营数据]({SHEET_URL})"
 
@@ -208,9 +216,13 @@ def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]], ex
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare acquisition progress report.")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--subtitle-output")
     args = parser.parse_args()
     source_rows, target_rows = read_data()
-    Path(args.output).write_text(report_text(source_rows, target_rows), encoding="utf-8")
+    sent_date, data_date = beijing_today(), report_date()
+    Path(args.output).write_text(report_text(source_rows, target_rows, expected_date=data_date), encoding="utf-8")
+    if args.subtitle_output:
+        Path(args.subtitle_output).write_text(report_subtitle(sent_date, data_date), encoding="utf-8")
     print("Acquisition progress content prepared.")
 
 
