@@ -19,7 +19,10 @@ LOGIN_URL = "https://trk.entiretrack.com/trackingassistant/"
 REPORT_URL = "https://trk.entiretrack.com/trackingassistant/viewdailyinstallinfo.aspx"
 HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
 PARTNER = "Winriser"
-OPERATION = "气泡"
+SOURCE_TO_OPERATION = {
+    "wnrwpsofc": "气泡",
+    "wnrwpsofc_exchange": "换量弹窗",
+}
 
 
 def parse_day(value):
@@ -98,16 +101,18 @@ def parse_report(html, cutoff):
         if len(cells) < 5 or cells[-4] == "Date":
             continue
         day_text, source, installs, spend = cells[-4:]
-        if source != "WPS":
+        operation = SOURCE_TO_OPERATION.get(source.strip().lower())
+        if operation is None:  # Ignore WPS aggregate and unrelated child sources.
             continue
         day = parse_day(day_text)
         if day > cutoff:
             continue
-        if day in rows:
-            raise RuntimeError(f"Tracker has duplicate WPS rows for {day}")
-        rows[day] = {"new_users": number(installs), "blood_volume": number(spend)}
+        key = (day, operation)
+        if key in rows:
+            raise RuntimeError(f"Tracker has duplicate {source} rows for {day}")
+        rows[key] = {"new_users": number(installs), "blood_volume": number(spend)}
     if not rows:
-        raise RuntimeError("Tracker returned no verified WPS rows")
+        raise RuntimeError("Tracker returned no verified Winriser child-source rows")
     return rows
 
 
@@ -170,17 +175,17 @@ def values_match(current, wanted):
 def plan_writes(headers, target_rows, source_rows, allow_overwrite):
     positions = {header: headers.index(header) for header in HEADERS}
     updates, appends, conflicts, overwrites = [], [], [], []
-    for day, metrics in sorted(source_rows.items()):
-        row = target_rows.get((day, PARTNER, OPERATION))
+    for (day, operation), metrics in sorted(source_rows.items()):
+        row = target_rows.get((day, PARTNER, operation))
         if row is None:
-            appends.append({"日期": day, "合作方": PARTNER, "运营位": OPERATION, "新增": metrics["new_users"], "血量": metrics["blood_volume"]})
+            appends.append({"日期": day, "合作方": PARTNER, "运营位": operation, "新增": metrics["new_users"], "血量": metrics["blood_volume"]})
             continue
         for header, key in (("新增", "new_users"), ("血量", "blood_volume")):
             current, wanted = value_at(row, positions[header]), metrics[key]
             if current in ("", None):
                 updates.append({"range": f"'{SHEET_NAME}'!{col_name(positions[header])}{row['row']}", "values": [[wanted]]})
             elif not values_match(current, wanted):
-                detail = f"{day} {PARTNER}/{OPERATION}/{header}: sheet={current}, source={wanted}"
+                detail = f"{day} {PARTNER}/{operation}/{header}: sheet={current}, source={wanted}"
                 if allow_overwrite:
                     updates.append({"range": f"'{SHEET_NAME}'!{col_name(positions[header])}{row['row']}", "values": [[wanted]]})
                     overwrites.append(detail)
@@ -233,7 +238,7 @@ def main():
     if updates:
         service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
     append_rows(service, headers, appends)
-    print(json.dumps({"source_days": sorted(day.isoformat() for day in source), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
+    print(json.dumps({"source_records": [{"date": day.isoformat(), "operation": operation} for day, operation in sorted(source)], "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

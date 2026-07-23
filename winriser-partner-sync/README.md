@@ -1,14 +1,15 @@
 # Winriser Partner Sync
 
-读取 Tracker / EntireTrack 的 `Daily Install Report`，仅保留 `Source = WPS` 的数据，并写入 Google Sheet「合作方新增血量」长表。
+读取 Tracker / EntireTrack 的 `Daily Install Report`，仅保留主 source `WPS` 下已映射的子 source，并写入 Google Sheet「合作方新增血量」长表。
 
-当前看板只提供 Winriser 气泡数据，因此每条记录写为：
+## 子 source 映射
 
-- 合作方：`Winriser`
-- 运营位：`气泡`
-- 指标：`新增`、`血量`
+- `wnrwpsofc` → 运营位：`气泡`
+- `wnrwpsofc_exchange` → 运营位：`换量弹窗`
+- 合作方：`Winriser`；新增：`Install Count`；血量：`Spend-PPI($)`
+- 主 source `WPS` 是汇总行，不写入；其他未映射子 source 也不写入。
 
-长表字段为「日期、合作方、运营位、新增、血量」。同步器以「日期 + 合作方 + 运营位」定位记录：已有记录更新指标，不存在则追加记录；不会创建换量弹窗数据。
+长表字段为「日期、合作方、运营位、新增、血量」。同步器以「日期 + 合作方 + 运营位」定位记录：已有记录补空或按显式覆盖参数更新，不存在则追加记录。
 
 ## GitHub Actions secrets
 
