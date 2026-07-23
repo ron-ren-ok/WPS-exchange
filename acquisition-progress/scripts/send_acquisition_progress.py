@@ -8,7 +8,8 @@ import calendar
 import json
 import os
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 
@@ -123,6 +124,31 @@ def target_config(rows: list[list[dict]], month: int) -> dict[str, dict[str, flo
     return sections
 
 
+def missing_data_notice(records: list[dict], expected_date: date) -> str | None:
+    expected_channels = {config["source"] for config in CHANNELS}
+    relevant = [record for record in records if record["date"] <= expected_date and record["channel"] in expected_channels]
+    if not relevant:
+        return f"注意：{expected_date.month}月{expected_date.day}日数据为空，请检查。"
+    first_date = min(record["date"] for record in relevant)
+    present_by_date: dict[date, set[str]] = defaultdict(set)
+    for record in relevant:
+        present_by_date[record["date"]].add(record["channel"])
+    current = first_date
+    while current <= expected_date:
+        missing = expected_channels - present_by_date.get(current, set())
+        if missing:
+            if len(missing) == len(expected_channels):
+                return f"注意：{current.month}月{current.day}日数据为空，请检查。"
+            labels = "、".join(config["label"] for config in CHANNELS if config["source"] in missing)
+            return f"注意：{current.month}月{current.day}日{labels}数据为空，请检查。"
+        current += timedelta(days=1)
+    return None
+
+
+def report_date() -> date:
+    return datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
+
+
 def weekly_sparkline(series: dict[date, float], latest: date) -> tuple[str, str]:
     buckets = []
     for bucket in range(11, -1, -1):
@@ -140,9 +166,13 @@ def weekly_sparkline(series: dict[date, float], latest: date) -> tuple[str, str]
     return sparkline, trend
 
 
-def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]]) -> str:
+def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]], expected_date: date | None = None) -> str:
     records = source_records(source_rows)
-    latest = max(record["date"] for record in records)
+    latest = expected_date or report_date()
+    notice = missing_data_notice(records, latest)
+    if notice:
+        return notice
+    records = [record for record in records if record["date"] <= latest]
     targets = target_config(target_rows, latest.month)
     month_start = latest.replace(day=1)
     days_in_month = calendar.monthrange(latest.year, latest.month)[1]
