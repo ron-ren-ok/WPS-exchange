@@ -243,17 +243,17 @@ def report(records: list[dict], targets: dict[str, float], cutoff: date) -> tupl
     forecast_users = forecast_metric_summary(monthly, "\u65b0\u589e", cutoff, lambda record: record["partner"] == "360")
     status = source_status(monthly, cutoff)
     daily = (
-        "\u27a1\ufe0f**\u8840\u91cf\uff08\u4e07\u7f8e\u5143\uff09**\\n\\n"
-        f"{progress_line('', revenue, targets['\u8840\u91cf'], cutoff)}\\n\\n"
-        "\u27a1\ufe0f**\u65b0\u589e\uff08\u4e07\uff09**\\n\\n"
-        f"{progress_line('360 ', users, targets['360\u65b0\u589e'], cutoff)}\\n\\n"
-        f"\u27a1\ufe0f**\u6570\u636e\u72b6\u6001\uff1a** {status}\\n\\n[\u67e5\u770b\u5408\u4f5c\u65b9\u65b0\u589e\u8840\u91cf]({SHEET_URL})"
+        "\u27a1\ufe0f**\u8840\u91cf\uff08\u4e07\u7f8e\u5143\uff09**\n\n"
+        f"{progress_line('', revenue, targets['\u8840\u91cf'], cutoff)}\n\n"
+        "\u27a1\ufe0f**\u65b0\u589e\uff08\u4e07\uff09**\n\n"
+        f"{progress_line('360 ', users, targets['360\u65b0\u589e'], cutoff)}\n\n"
+        f"\u27a1\ufe0f**\u6570\u636e\u72b6\u6001\uff1a** {status}\n\n[\u67e5\u770b\u5408\u4f5c\u65b9\u65b0\u589e\u8840\u91cf]({SHEET_URL})"
     )
     forecast = (
-        "\u27a1\ufe0f**\u8840\u91cf\uff08\u4e07\u7f8e\u5143\uff09**\\n\\n"
-        f"{forecast_line('', forecast_revenue, targets['\u8840\u91cf'], cutoff)}\\n\\n"
-        "\u27a1\ufe0f**\u65b0\u589e\uff08\u4e07\uff09**\\n\\n"
-        f"{forecast_line('360 ', forecast_users, targets['360\u65b0\u589e'], cutoff)}\\n\\n"
+        "\u27a1\ufe0f**\u8840\u91cf\uff08\u4e07\u7f8e\u5143\uff09**\n\n"
+        f"{forecast_line('', forecast_revenue, targets['\u8840\u91cf'], cutoff)}\n\n"
+        "\u27a1\ufe0f**\u65b0\u589e\uff08\u4e07\uff09**\n\n"
+        f"{forecast_line('360 ', forecast_users, targets['360\u65b0\u589e'], cutoff)}\n\n"
         f"[\u67e5\u770b\u5408\u4f5c\u65b9\u65b0\u589e\u8840\u91cf]({SHEET_URL})"
     )
     return daily, forecast
