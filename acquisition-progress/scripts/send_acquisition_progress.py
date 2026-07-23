@@ -20,8 +20,8 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 UNIT_DIVISOR = 10_000
 REQUIRED_SOURCE_HEADERS = ("日期", "渠道", "新增设备数", "近30日活跃设备数_MAD")
 CHANNELS = (
-    {"label": "导量", "source": "安卓导PC", "target": "导量&裂变", "new_target": "导量裂变"},
     {"label": "三方", "source": "三方换量", "target": "三方合作", "new_target": "第三方"},
+    {"label": "导量", "source": "安卓导PC", "target": "导量&裂变", "new_target": "导量裂变"},
     {"label": "Affiliate", "source": "Affiliate", "target": "AFF联盟", "new_target": "AFF联盟"},
 )
 
@@ -165,13 +165,12 @@ def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]]) ->
         month_actual = sum(value for day, value in daily_new.items() if month_start <= day <= latest)
         daily_actual = month_actual / latest.day
         daily_target = new_target / days_in_month
-        sparkline, trend = weekly_sparkline(daily_new, latest)
+        sparkline, _ = weekly_sparkline(daily_new, latest)
         blocks.append(
-            f"**{config['label']}**\n"
-            f"昨日新增 **{daily_new[latest]:.2f}万**　|　本月日均 **{daily_actual:.2f}万 / {daily_target:.2f}万**\n"
-            f"本月新增 **{month_actual:.2f}万 / {new_target:.2f}万**（{month_actual / new_target:.1%}）\n"
-            f"近30天 MAD **{daily_mau[latest]:.2f}万 / {mau_target:.2f}万**（{daily_mau[latest] / mau_target:.1%}）\n"
-            f"近12周新增日均 `{sparkline}`　{trend}"
+            f"**👉🏻{config['label']}**\n"
+            f"▪️昨日新增 **{daily_new[latest]:.2f}万**　|　本月日均 **{daily_actual:.2f}万 / {daily_target:.2f}万** 本月新增 **{month_actual:.2f}万 / {new_target:.2f}万**（{month_actual / new_target:.1%}）\n"
+            f"▪️近30天 MAD **{daily_mau[latest]:.2f}万 / {mau_target:.2f}万**（{daily_mau[latest] / mau_target:.1%}）\n"
+            f"▪️近12周新增日均 `{sparkline}`"
         )
     return "\n\n".join(blocks) + f"\n\n[查看三方&导量运营数据]({SHEET_URL})"
 
