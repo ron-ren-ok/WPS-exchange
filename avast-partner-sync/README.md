@@ -23,7 +23,7 @@
 ## 首次 Gmail IMAP 配置
 
 1. 为 `54lingbai@gmail.com` 开启两步验证。
-2. 打开 Google 账号的“应用专用密码”，创建一个名称为 `WPS Avast Partner Sync` 的密码。
+2. 打开 Google 账号的“应用专用密码”，创建一个名称为 `WPS Partner Sync` 的密码。
 3. 将 Gmail 地址保存到 GitHub Secret `GMAIL_IMAP_USERNAME`，将生成的 16 位密码保存到 `GMAIL_APP_PASSWORD`（可包含或不包含显示用空格）。
 
 同步器只通过 `imap.gmail.com:993` 的只读邮箱连接获取符合主题和发件人校验的 PDF；不再使用 Google OAuth refresh token。旧的 `GMAIL_OAUTH_CLIENT_JSON` 与 `GMAIL_REFRESH_TOKEN` 可以在新任务验证成功后删除。
