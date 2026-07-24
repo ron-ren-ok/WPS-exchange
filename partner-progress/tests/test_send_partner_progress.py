@@ -36,6 +36,15 @@ class PartnerProgressTests(unittest.TestCase):
     def test_long_table_range_has_no_fixed_row_cap(self):
         self.assertIn('f"{SOURCE_SHEET}!A:E"', Path(MODULE).read_text(encoding="utf-8"))
 
+    def test_target_config_uses_only_target_columns_not_actual_columns(self):
+        target_rows = [
+            [cell(), cell(), cell(), cell(), cell(), cell("合作方预算目标"), cell(), cell(), cell(), cell("合作方预算实际"), cell(), cell(), cell(), cell("合作方新增目标"), cell(), cell("合作方新增实际")],
+            [cell("月份"), cell(), cell(), cell(), cell(), cell("Opera"), cell("Yandex"), cell("Avast"), cell("Winriser"), cell("Opera"), cell("Yandex"), cell("Avast"), cell("Winriser"), cell("360"), cell("Terabox"), cell("360")],
+            [cell("7月"), cell(), cell(), cell(), cell(), cell(number=6), cell(number=3.8), cell(number=10.2), cell(number=3), cell(number=6.32), cell(number=1.02), cell(number=8.38), cell(number=0.93), cell(number=60), cell(number=15), cell(number=59.24)],
+        ]
+        targets = PROGRESS.target_config(target_rows, 7)
+        self.assertEqual(targets["Opera"], {"name": "Opera", "target_metric": "revenue", "target": 6.0})
+        self.assertEqual(targets["360"], {"name": "360", "target_metric": "new", "target": 60.0})
     def test_weekly_prediction_line_has_twelve_spark_columns(self):
         series = {date(2026, 5, 1) + timedelta(days=offset): float(offset + 1) for offset in range(84)}
         line = PROGRESS.weekly_prediction_line("revenue", series, date(2026, 7, 23))

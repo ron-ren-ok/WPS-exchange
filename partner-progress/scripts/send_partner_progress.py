@@ -22,7 +22,10 @@ TARGET_SHEET = "目标完成度"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=63683153"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 UNIT_DIVISOR = 10_000
-TARGET_BLOCKS = {"合作方预算目标": "revenue", "合作方新增目标": "new"}
+TARGET_BLOCKS = {
+    "合作方预算目标": ("revenue", "合作方预算实际"),
+    "合作方新增目标": ("new", "合作方新增实际"),
+}
 REQUIRED_SOURCE_HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
 
 
@@ -115,35 +118,41 @@ def latest_actual_date(records: list[dict]) -> date:
 
 def target_config(target_rows: list[list[dict]], report_month: int) -> dict[str, dict]:
     if len(target_rows) < 3:
-        raise RuntimeError("\u76ee\u6807\u5b8c\u6210\u5ea6 does not contain target blocks and monthly rows.")
-    month_row = next((row for row in target_rows if row and cell_text(row, 0) == f"{report_month}\u6708"), None)
+        raise RuntimeError("目标完成度 does not contain target blocks and monthly rows.")
+    month_row = next((row for row in target_rows if row and cell_text(row, 0) == f"{report_month}月"), None)
     if month_row is None:
-        raise RuntimeError(f"\u76ee\u6807\u5b8c\u6210\u5ea6 does not contain a {report_month}\u6708 target row.")
-    header_row = None
-    starts = []
-    for row_index, block_row in enumerate(target_rows[:-1]):
-        candidate_starts = [
-            (index, TARGET_BLOCKS[cell_text(block_row, index)])
-            for index in range(len(block_row))
-            if cell_text(block_row, index) in TARGET_BLOCKS
-        ]
+        raise RuntimeError(f"目标完成度 does not contain a {report_month}月 target row.")
+
+    block_row = header_row = None
+    starts: dict[str, int] = {}
+    for row_index, candidate_block_row in enumerate(target_rows[:-1]):
+        candidate_starts = {
+            label: index
+            for index in range(len(candidate_block_row))
+            if (label := cell_text(candidate_block_row, index)) in TARGET_BLOCKS
+        }
         if candidate_starts:
-            header_row, starts = target_rows[row_index + 1], candidate_starts
+            block_row = candidate_block_row
+            header_row = target_rows[row_index + 1]
+            starts = candidate_starts
             break
-    if not starts or header_row is None:
-        raise RuntimeError("\u76ee\u6807\u5b8c\u6210\u5ea6 does not contain \u5408\u4f5c\u65b9\u9884\u7b97\u76ee\u6807 or \u5408\u4f5c\u65b9\u65b0\u589e\u76ee\u6807 blocks.")
+    if block_row is None or header_row is None or not starts:
+        raise RuntimeError("目标完成度 does not contain 合作方预算目标 or 合作方新增目标 blocks.")
+
     configs: dict[str, dict] = {}
-    for block_index, (start, metric) in enumerate(starts):
-        end = starts[block_index + 1][0] if block_index + 1 < len(starts) else len(header_row)
+    for label, start in starts.items():
+        metric, end_label = TARGET_BLOCKS[label]
+        end = next(
+            (index for index in range(start + 1, len(block_row)) if cell_text(block_row, index) == end_label),
+            len(header_row),
+        )
         for column in range(start, end):
             name = cell_text(header_row, column)
             target = number(month_row[column]) if len(month_row) > column else None
             if not name or target is None:
                 continue
-            if name not in configs or metric == "revenue":
-                configs[name] = {"name": name, "target_metric": metric, "target": target}
+            configs[name] = {"name": name, "target_metric": metric, "target": target}
     return configs
-
 
 def build_partners(records: list[dict], target_rows: list[list[dict]], report_month: int) -> list[dict]:
     targets = target_config(target_rows, report_month)
