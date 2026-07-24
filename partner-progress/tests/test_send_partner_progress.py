@@ -1,6 +1,6 @@
 import importlib.util
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 MODULE = Path(__file__).resolve().parents[1] / "scripts" / "send_partner_progress.py"
@@ -35,6 +35,12 @@ class PartnerProgressTests(unittest.TestCase):
 
     def test_long_table_range_has_no_fixed_row_cap(self):
         self.assertIn('f"{SOURCE_SHEET}!A:E"', Path(MODULE).read_text(encoding="utf-8"))
+
+    def test_weekly_prediction_line_has_twelve_spark_columns(self):
+        series = {date(2026, 5, 1) + timedelta(days=offset): float(offset + 1) for offset in range(84)}
+        line = PROGRESS.weekly_prediction_line("revenue", series, date(2026, 7, 23))
+        chart = line.split()[-1].rstrip("**")
+        self.assertEqual(len(chart), 12)
 
 
 if __name__ == "__main__":

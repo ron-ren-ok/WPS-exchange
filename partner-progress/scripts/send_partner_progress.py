@@ -210,6 +210,24 @@ def forecast_line(label: str, series: dict[date, float], latest: date, target: f
     )
 
 
+def sparkline(values: list[float]) -> str:
+    """Render a compact eight-level trend without exposing implementation data."""
+    if not values:
+        return ""
+    low, high = min(values), max(values)
+    if high == low:
+        return chr(0x2585) * len(values)
+    return "".join(chr(0x2581 + round((value - low) / (high - low) * 7)) for value in values)
+
+
+def weekly_prediction_line(metric: str, series: dict[date, float], latest: date) -> str:
+    """Show the forecast daily-rate trend used by the 14-day target forecast."""
+    week_ends = [latest - timedelta(days=7 * offset) for offset in range(11, -1, -1)]
+    predicted_daily_averages = [average(series, end, 14) or 0.0 for end in week_ends]
+    metric_label = "\u8840\u91cf" if metric == "revenue" else "\u65b0\u589e"
+    return f"\U0001f534**\u8fd112\u5468{metric_label}\u9884\u6d4b\u65e5\u5747 {sparkline(predicted_daily_averages)}**"
+
+
 def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]]) -> str:
     records = source_records(source_rows)
     report_date = latest_actual_date(records)
@@ -232,6 +250,7 @@ def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]]) ->
             lines.append(forecast_line("血量目标预测", series[name]["revenue"], latest, partner["target"]))
         else:
             lines.append(forecast_line("新增目标预测", series[name]["new"], latest, partner["target"]))
+        lines.append(weekly_prediction_line(metric, series[name][metric], latest))
         blocks.append("\n\n".join(lines))
     if not blocks:
         raise RuntimeError("No configured partner metrics were available for the latest reporting month.")
