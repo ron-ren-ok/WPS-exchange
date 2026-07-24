@@ -16,7 +16,7 @@
 复用 Avast 已配置的凭证，不需要新增 Secret：
 
 - `GOOGLE_SHEET_SERVICE_ACCOUNT_JSON`
-- `GMAIL_OAUTH_CLIENT_JSON`
-- `GMAIL_REFRESH_TOKEN`
+- `GMAIL_IMAP_USERNAME`
+- `GMAIL_APP_PASSWORD`
 
-服务账号必须拥有目标表格编辑权限。工作流每天北京时间 03:00 执行，也可在 Actions 页面手动选择日期范围补数。
+服务账号必须拥有目标表格编辑权限。工作流每天北京时间 03:00 执行，也可在 Actions 页面手动选择日期范围补数。Opera 与 Avast 共用同一个 Gmail IMAP 应用专用密码，不再使用 OAuth refresh token。

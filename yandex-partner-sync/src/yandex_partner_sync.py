@@ -88,9 +88,11 @@ def build_blocks(profile, start, end):
     blocks = [block for block in blocks if block.get("id") in {"filters", "measures", "conditional_filters", "currency_converter"}]
     for block in blocks:
         if block.get("id") == "filters":
-            block["fields"] = [field for field in block.get("fields", []) if field.get("id") in {"templates", "period", "detalization"}]
+            # `templates` belongs to the dashboard UI; api_table now rejects it.
+            # The profile country/pack filters below define the actual source.
+            block["fields"] = [field for field in block.get("fields", []) if field.get("id") in {"period", "detalization"}]
     values = {
-        "templates": profile["template"], "period": f"{start:%Y.%m.%d}-{end:%Y.%m.%d}", "detalization": "1",
+        "period": f"{start:%Y.%m.%d}-{end:%Y.%m.%d}", "detalization": "1",
         "default_constructor_field_country_group": True, "default_constructor_field_country_operation": "1",
         "default_constructor_field_country": [profile["country_id"]], "default_constructor_field_pack_id_group": True,
         "default_constructor_field_pack_id_operation": "1", "default_constructor_field_pack_id": ",".join(map(str, profile["pack_ids"])),
@@ -124,7 +126,8 @@ def fetch_daily(profile, start, end, token):
         with urlopen(request, timeout=60) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
-        raise RuntimeError(f"Yandex API HTTP {exc.code}") from None
+        detail = exc.read(1000).decode("utf-8", "replace").replace("\r", " ").replace("\n", " ").strip()
+        raise RuntimeError(f"Yandex API HTTP {exc.code}: {detail[:1000]}") from None
     except URLError as exc:
         raise RuntimeError(f"Yandex API connection error: {exc.reason}") from None
     rows = payload.get("data", {}).get("rows", payload.get("rows"))

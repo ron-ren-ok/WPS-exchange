@@ -1,5 +1,6 @@
 import importlib.util
 import unittest
+from email.message import EmailMessage
 from datetime import date
 from pathlib import Path
 
@@ -31,6 +32,31 @@ class OperaTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate"):
             OPERA.parse_opera_text(duplicate, "wpstest")
 
+    def test_imap_subject_search_and_pdf_attachment(self):
+        class FakeImap:
+            def __init__(self):
+                self.uid_args = None
+
+            def list(self):
+                return "OK", [b'* LIST (\\HasNoChildren \\All) "/" "[Gmail]/All Mail"']
+
+            def select(self, mailbox, readonly):
+                self.mailbox = (mailbox, readonly)
+                return "OK", [b"0"]
+
+            def uid(self, *args):
+                self.uid_args = args
+                return "OK", [b""]
+
+        client = FakeImap()
+        self.assertEqual(list(OPERA.imap_messages(client)), [])
+        self.assertEqual(client.mailbox, ("[Gmail]/All Mail", True))
+        self.assertEqual(client.uid_args, ("search", None, "SUBJECT", f'"{OPERA.SUBJECT}"'))
+        message = EmailMessage()
+        message["From"] = OPERA.SENDER
+        message.set_content("report")
+        message.add_attachment(b"pdf", maintype="application", subtype="pdf", filename="report.pdf")
+        self.assertEqual(list(OPERA.attachments(message)), [b"pdf"])
     def test_column_names(self):
         self.assertEqual(OPERA.col_name(0), "A")
         self.assertEqual(OPERA.col_name(26), "AA")

@@ -12,8 +12,8 @@ on:
         required: false
         type: string
   schedule:
-    - cron: "0 3 * * *"
-      timezone: "Asia/Shanghai"
+    # 03:00 Beijing time = 19:00 UTC on the preceding day.
+    - cron: "0 19 * * *"
 
 permissions:
   contents: read
@@ -37,5 +37,5 @@ jobs:
           --allow-overwrite
         env:
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
-          GMAIL_OAUTH_CLIENT_JSON: ${{ secrets.GMAIL_OAUTH_CLIENT_JSON }}
-          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+          GMAIL_IMAP_USERNAME: ${{ secrets.GMAIL_IMAP_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}

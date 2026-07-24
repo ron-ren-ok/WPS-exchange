@@ -137,8 +137,10 @@ def select_all_mail(client):
 
 def imap_messages(client, subject):
     select_all_mail(client)
-    query = f'in:anywhere has:attachment -in:spam -in:trash subject:"{subject}"'
-    status, data = client.uid("search", None, "X-GM-RAW", query)
+    # X-GM-RAW needs Gmail-specific literal quoting and was rejected by the
+    # server in GitHub Actions. Standard IMAP SUBJECT search is portable;
+    # All Mail excludes spam/trash and later checks still verify sender/PDF.
+    status, data = client.uid("search", None, "SUBJECT", f'"{subject}"')
     if status != "OK":
         raise RuntimeError("Gmail IMAP search failed")
     for uid in reversed(data[0].split()):
