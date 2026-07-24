@@ -1,6 +1,7 @@
 """Fetch Avast PBI PDF attachments from Gmail and sync verified daily metrics."""
 import argparse
-import base64
+import email
+import imaplib
 import io
 import json
 import os
@@ -82,21 +83,14 @@ def pdf_rows(raw_pdf):
         return parse_avast_page(pdf.pages[0].extract_text() or "")
 
 
-def oauth_client_config(value):
-    data = json.loads(value)
-    config = data.get("installed") or data.get("web")
-    if not config or not config.get("client_id") or not config.get("client_secret"):
-        raise RuntimeError("GMAIL_OAUTH_CLIENT_JSON must be an OAuth client JSON")
-    return config
-
-
-def gmail_service(client_json, refresh_token):
-    from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
-    config = oauth_client_config(client_json)
-    creds = Credentials(token=None, refresh_token=refresh_token.strip(), token_uri=config.get("token_uri", "https://oauth2.googleapis.com/token"), client_id=config["client_id"], client_secret=config["client_secret"], scopes=["https://www.googleapis.com/auth/gmail.readonly"])
-    return build("gmail", "v1", credentials=creds, cache_discovery=False)
-
+def gmail_imap_client(username, app_password):
+    """Authenticate with an app password; OAuth refresh tokens are not used."""
+    try:
+        client = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+        client.login(username.strip(), app_password.replace(" ", "").strip())
+        return client
+    except imaplib.IMAP4.error as exc:
+        raise RuntimeError("Gmail IMAP login failed; check GMAIL_IMAP_USERNAME and GMAIL_APP_PASSWORD") from exc
 
 def sheets_service(service_json):
     from google.oauth2.service_account import Credentials
@@ -105,56 +99,64 @@ def sheets_service(service_json):
     return build("sheets", "v4", credentials=creds, cache_discovery=False)
 
 
-def b64url(data):
-    return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
-
-
-def headers(message):
-    return {item["name"].lower(): item["value"] for item in message.get("payload", {}).get("headers", [])}
-
-
-def parts(node):
-    yield node
-    for child in node.get("parts", []) or []:
-        yield from parts(child)
-
-
 def body_text(message):
-    values = []
-    for part in parts(message.get("payload", {})):
-        if part.get("mimeType", "").startswith("text/") and part.get("body", {}).get("data"):
-            values.append(b64url(part["body"]["data"]).decode("utf-8", "replace"))
-    return "\n".join(values)
+    return "\n".join(
+        part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", "replace")
+        for part in message.walk()
+        if part.get_content_maintype() == "text" and part.get_payload(decode=True)
+    )
 
 
 def verified_sender(message):
-    sent_by = headers(message).get("from", "").lower()
+    sent_by = message.get("From", "").lower()
     if ORIGINAL_SENDER in sent_by:
         return True
     return FORWARDER in sent_by and ORIGINAL_SENDER in body_text(message).lower()
 
 
-def attachments(service, message):
-    for part in parts(message.get("payload", {})):
-        body = part.get("body", {})
-        attachment_id = body.get("attachmentId")
-        if attachment_id and (part.get("mimeType") == "application/pdf" or part.get("filename", "").lower().endswith(".pdf")):
-            payload = service.users().messages().attachments().get(userId="me", messageId=message["id"], id=attachment_id).execute()
-            yield b64url(payload["data"])
+def attachments(message):
+    for part in message.walk():
+        filename = part.get_filename() or ""
+        if part.get_content_type() == "application/pdf" or filename.lower().endswith(".pdf"):
+            payload = part.get_payload(decode=True)
+            if payload:
+                yield payload
 
 
-def source_rows(service, surface, start, end):
+def select_all_mail(client):
+    status, mailboxes = client.list()
+    if status != "OK":
+        raise RuntimeError("Gmail IMAP mailbox listing failed")
+    all_mail = next((item.decode("utf-8", "replace").rsplit('"', 2)[-2]
+                     for item in mailboxes if b"\\All" in item), None)
+    mailbox = all_mail or "INBOX"
+    status, _ = client.select(mailbox, readonly=True)
+    if status != "OK":
+        raise RuntimeError(f"Gmail IMAP could not open mailbox: {mailbox}")
+
+
+def imap_messages(client, subject):
+    select_all_mail(client)
+    query = f'in:anywhere has:attachment -in:spam -in:trash subject:"{subject}"'
+    status, data = client.uid("search", None, "X-GM-RAW", query)
+    if status != "OK":
+        raise RuntimeError("Gmail IMAP search failed")
+    for uid in reversed(data[0].split()):
+        status, payload = client.uid("fetch", uid, "(RFC822)")
+        if status != "OK" or not payload or not isinstance(payload[0], tuple):
+            continue
+        yield email.message_from_bytes(payload[0][1])
+
+
+def source_rows(client, surface, start, end):
     spec = SURFACES[surface]
-    query = f'in:anywhere has:attachment -in:spam -in:trash subject:"{spec["subject"]}"'
-    listing = service.users().messages().list(userId="me", q=query, maxResults=100).execute().get("messages", [])
     resolved = {}
     rejected = 0
-    for item in listing:  # Gmail returns newest first; first report wins for each day.
-        message = service.users().messages().get(userId="me", id=item["id"], format="full").execute()
+    for message in imap_messages(client, spec["subject"]):
         if not verified_sender(message):
             rejected += 1
             continue
-        for raw_pdf in attachments(service, message):
+        for raw_pdf in attachments(message):
             for day, metrics in pdf_rows(raw_pdf).items():
                 if start <= day <= end and day not in resolved:
                     resolved[day] = metrics
@@ -279,7 +281,7 @@ def main():
     parser.add_argument("--end-date")
     parser.add_argument("--allow-overwrite", action="store_true")
     args = parser.parse_args()
-    secrets = {name: os.environ.get(name) for name in ("GMAIL_OAUTH_CLIENT_JSON", "GMAIL_REFRESH_TOKEN", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON")}
+    secrets = {name: os.environ.get(name) for name in ("GMAIL_IMAP_USERNAME", "GMAIL_APP_PASSWORD", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON")}
     if not all(secrets.values()):
         raise RuntimeError("missing required GitHub Actions secret")
     end = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
@@ -288,8 +290,11 @@ def main():
     start = parse_day(args.start_date) if args.start_date else first_missing(existing_rows, end)
     if start > end:
         raise RuntimeError("start date is after end date")
-    gmail = gmail_service(secrets["GMAIL_OAUTH_CLIENT_JSON"], secrets["GMAIL_REFRESH_TOKEN"])
-    sources = {surface: source_rows(gmail, surface, start, end) for surface in SURFACES}
+    gmail = gmail_imap_client(secrets["GMAIL_IMAP_USERNAME"], secrets["GMAIL_APP_PASSWORD"])
+    try:
+        sources = {surface: source_rows(gmail, surface, start, end) for surface in SURFACES}
+    finally:
+        gmail.logout()
     updates, appends, overwrites = plan_writes(headers, existing_rows, sources, args.allow_overwrite)
     if updates:
         sheets.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
