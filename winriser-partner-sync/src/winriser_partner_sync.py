@@ -17,9 +17,13 @@ SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 SHEET_NAME = "合作方新增血量"
 LOGIN_URL = "https://trk.entiretrack.com/trackingassistant/"
 REPORT_URL = "https://trk.entiretrack.com/trackingassistant/viewdailyinstallinfo.aspx"
+EXPAND_URL = "https://trk.entiretrack.com/trackingassistant/ajax/fetchDailyInstallinfo.aspx"
 HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
 PARTNER = "Winriser"
-OPERATION = "气泡"
+SOURCE_TO_OPERATION = {
+    "wnrwpsofc": "气泡",
+    "wnrwpsofc_exchange": "换量弹窗",
+}
 
 
 def parse_day(value):
@@ -70,7 +74,7 @@ def login(session, secret):
         raise RuntimeError("Tracker login was not accepted")
 
 
-def fetch_report(session):
+def fetch_parent_report(session):
     response = session.get(REPORT_URL, timeout=30)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
@@ -86,28 +90,75 @@ def fetch_report(session):
     return response.text
 
 
-def parse_report(html, cutoff):
+def fetch_child_sources(session, partner_id, day):
+    response = session.post(
+        EXPAND_URL,
+        data={
+            "PartnerId": str(partner_id), "SourceId": "0",
+            "dateFrom": day.isoformat(), "dateTo": day.isoformat(),
+            "ExpandPartner": "1", "ExpandSrc": "0", "ExpandCamp": "0", "ExpandPub": "0",
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.text
+
+
+def parse_parent_rows(html, cutoff):
     soup = BeautifulSoup(html, "html.parser")
     expected = ("Date", "Source", "Install Count", "Spend-PPI($)")
-    table = next((table for table in soup.find_all("table") if expected == tuple(cell.get_text(" ", strip=True) for cell in table.find_all("th")[-4:])), None)
-    if table is None:
+    tables = soup.find_all("table")
+    table = next((table for table in tables if expected == tuple(cell.get_text(" ", strip=True) for cell in table.find_all("th")[-4:])), None)
+    if tables and table is None:
         raise RuntimeError("Tracker report table headers changed")
+    report_rows = table.find_all("tr") if table else soup.find_all("tr")
+    if not report_rows:
+        raise RuntimeError("Tracker child-source response has no rows")
     rows = {}
-    for tr in table.find_all("tr"):
+    for tr in report_rows:
         cells = [cell.get_text(" ", strip=True) for cell in tr.find_all("td")]
-        if len(cells) < 5 or cells[-4] == "Date":
+        if len(cells) < 5:
             continue
-        day_text, source, installs, spend = cells[-4:]
+        day_text, source, _, _ = cells[-4:]
         if source != "WPS":
             continue
         day = parse_day(day_text)
         if day > cutoff:
             continue
+        key = tr.select_one("input[name$='$key']")
+        if key is None or not key.get("value"):
+            raise RuntimeError(f"Tracker WPS parent key is missing for {day}")
         if day in rows:
-            raise RuntimeError(f"Tracker has duplicate WPS rows for {day}")
-        rows[day] = {"new_users": number(installs), "blood_volume": number(spend)}
+            raise RuntimeError(f"Tracker has duplicate WPS parent rows for {day}")
+        rows[day] = key["value"]
     if not rows:
-        raise RuntimeError("Tracker returned no verified WPS rows")
+        raise RuntimeError("Tracker returned no WPS parent rows")
+    return rows
+
+
+def parse_report(html, cutoff):
+    soup = BeautifulSoup(html, "html.parser")
+    # The Tracker expand endpoint returns bare <tr> fragments rather than a table.
+    rows = {}
+    report_rows = soup.find_all("tr")
+    if not report_rows:
+        raise RuntimeError("Tracker child-source response has no rows")
+    for tr in report_rows:
+        cells = [cell.get_text(" ", strip=True) for cell in tr.find_all("td")]
+        if len(cells) < 5 or cells[-4] == "Date":
+            continue
+        day_text, source, installs, spend = cells[-4:]
+        source_key = source.strip().lower().split(" - ", 1)[0]
+        operation = SOURCE_TO_OPERATION.get(source_key)
+        if operation is None:  # Ignore WPS aggregate and unrelated child sources.
+            continue
+        day = parse_day(day_text)
+        if day > cutoff:
+            continue
+        key = (day, operation)
+        if key in rows:
+            raise RuntimeError(f"Tracker has duplicate {source} rows for {day}")
+        rows[key] = {"new_users": number(installs), "blood_volume": number(spend)}
     return rows
 
 
@@ -170,17 +221,17 @@ def values_match(current, wanted):
 def plan_writes(headers, target_rows, source_rows, allow_overwrite):
     positions = {header: headers.index(header) for header in HEADERS}
     updates, appends, conflicts, overwrites = [], [], [], []
-    for day, metrics in sorted(source_rows.items()):
-        row = target_rows.get((day, PARTNER, OPERATION))
+    for (day, operation), metrics in sorted(source_rows.items()):
+        row = target_rows.get((day, PARTNER, operation))
         if row is None:
-            appends.append({"日期": day, "合作方": PARTNER, "运营位": OPERATION, "新增": metrics["new_users"], "血量": metrics["blood_volume"]})
+            appends.append({"日期": day, "合作方": PARTNER, "运营位": operation, "新增": metrics["new_users"], "血量": metrics["blood_volume"]})
             continue
         for header, key in (("新增", "new_users"), ("血量", "blood_volume")):
             current, wanted = value_at(row, positions[header]), metrics[key]
             if current in ("", None):
                 updates.append({"range": f"'{SHEET_NAME}'!{col_name(positions[header])}{row['row']}", "values": [[wanted]]})
             elif not values_match(current, wanted):
-                detail = f"{day} {PARTNER}/{OPERATION}/{header}: sheet={current}, source={wanted}"
+                detail = f"{day} {PARTNER}/{operation}/{header}: sheet={current}, source={wanted}"
                 if allow_overwrite:
                     updates.append({"range": f"'{SHEET_NAME}'!{col_name(positions[header])}{row['row']}", "values": [[wanted]]})
                     overwrites.append(detail)
@@ -226,14 +277,19 @@ def main():
     with requests.Session() as session:
         session.headers["User-Agent"] = "WPS partner data sync/1.0"
         login(session, secret)
-        source = parse_report(fetch_report(session), cutoff)
+        parents = parse_parent_rows(fetch_parent_report(session), cutoff)
+        source = {}
+        for day, partner_id in parents.items():
+            source.update(parse_report(fetch_child_sources(session, partner_id, day), cutoff))
+    if not source:
+        raise RuntimeError("Tracker returned no verified Winriser child-source rows")
     service = sheets_service(service_json)
     headers, target_rows = get_sheet(service)
     updates, appends, overwrites = plan_writes(headers, target_rows, source, args.allow_overwrite)
     if updates:
         service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
     append_rows(service, headers, appends)
-    print(json.dumps({"source_days": sorted(day.isoformat() for day in source), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
+    print(json.dumps({"source_records": [{"date": day.isoformat(), "operation": operation} for day, operation in sorted(source)], "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

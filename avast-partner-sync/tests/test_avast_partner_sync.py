@@ -1,5 +1,6 @@
 import importlib.util
 import unittest
+from email.message import EmailMessage
 from datetime import date
 from pathlib import Path
 
@@ -68,6 +69,13 @@ class AvastTests(unittest.TestCase):
         self.assertEqual(len(updates), 1)
         self.assertIn("D99", updates[0]["range"])
         self.assertEqual(len(overwrites), 1)
+    def test_accepts_forwarded_message_and_pdf_attachment(self):
+        message = EmailMessage()
+        message["From"] = "partner@wps.com"
+        message.set_content("Forwarded message from no-reply-powerbi@microsoft.com")
+        message.add_attachment(b"pdf", maintype="application", subtype="pdf", filename="report.pdf")
+        self.assertTrue(AVAST.verified_sender(message))
+        self.assertEqual(list(AVAST.attachments(message)), [b"pdf"])
     def test_column_names(self):
         self.assertEqual(AVAST.col_name(0), "A")
         self.assertEqual(AVAST.col_name(25), "Z")
