@@ -24,6 +24,13 @@ class SyncTests(unittest.TestCase):
         SYNC.validate_source_coverage(with_gap, start, end)
         self.assertEqual(with_gap[date(2026, 2, 12)], [0, 0])
 
+    def test_request_blocks_exclude_dashboard_template_field(self):
+        profile = SYNC.load_profile("popup")
+        blocks = SYNC.build_blocks(profile, date(2026, 7, 23), date(2026, 7, 23))
+        filters = next(block for block in blocks if block["id"] == "filters")
+        fields = {field["id"]: field for field in filters["fields"]}
+        self.assertNotIn("templates", fields)
+        self.assertEqual(fields["period"]["value"], "2026.07.23-2026.07.23")
     def test_dynamic_column_names(self):
         self.assertEqual(SYNC.column_name(0), "A")
         self.assertEqual(SYNC.column_name(25), "Z")

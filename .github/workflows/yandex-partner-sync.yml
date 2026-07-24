@@ -17,8 +17,8 @@ on:
         default: true
         type: boolean
   schedule:
-    - cron: "0 3 * * *"
-      timezone: "Asia/Shanghai"
+    # 03:00 Beijing time = 19:00 UTC on the preceding day.
+    - cron: "0 19 * * *"
 
 permissions:
   contents: read
