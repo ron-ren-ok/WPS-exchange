@@ -1,6 +1,7 @@
 """Fetch Opera dashboard PDF attachments from Gmail and sync daily metrics."""
 import argparse
-import base64
+import email
+import imaplib
 import io
 import json
 import os
