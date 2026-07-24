@@ -28,6 +28,7 @@ jobs:
       - run: >-
           python src/winriser_partner_sync.py
           ${{ inputs.end_date && format('--end-date {0}', inputs.end_date) || '' }}
+          --allow-overwrite
         env:
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
           WINRISER_LOGIN_SECRET: ${{ secrets.WINRISER_LOGIN_SECRET }}
