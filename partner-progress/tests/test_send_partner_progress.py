@@ -43,5 +43,23 @@ class PartnerProgressTests(unittest.TestCase):
         self.assertEqual(len(chart), 12)
 
 
+    def test_target_config_finds_named_blocks_after_leading_rows(self):
+        rows = [
+            [{"formattedValue": "\u8bf4\u660e"}],
+            [{}, {"formattedValue": "\u5408\u4f5c\u65b9\u9884\u7b97\u76ee\u6807"}, {}, {"formattedValue": "\u5408\u4f5c\u65b9\u65b0\u589e\u76ee\u6807"}],
+            [{"formattedValue": "\u6708\u4efd"}, {"formattedValue": "Avast"}, {"formattedValue": "Opera"}, {"formattedValue": "360"}],
+            [
+                {"formattedValue": "7\u6708"},
+                {"effectiveValue": {"numberValue": 10.7}},
+                {"effectiveValue": {"numberValue": 6.0}},
+                {"effectiveValue": {"numberValue": 60.0}},
+            ],
+        ]
+        targets = PROGRESS.target_config(rows, 7)
+        self.assertEqual(targets["Avast"]["target_metric"], "revenue")
+        self.assertEqual(targets["Avast"]["target"], 10.7)
+        self.assertEqual(targets["360"]["target_metric"], "new")
+        self.assertEqual(targets["360"]["target"], 60.0)
+
 if __name__ == "__main__":
     unittest.main()

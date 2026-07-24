@@ -119,22 +119,39 @@ def long_records(rows: list[list[dict]]) -> list[dict]:
 
 
 def monthly_targets(rows: list[list[dict]], month: int) -> dict[str, float]:
-    """Read goal values, not actuals, from the independent target table."""
-    headers = None
-    for row_index, row in enumerate(rows):
-        names = [cell_text(cell) for cell in row]
-        if all(name in names for name in ("月份", "当月目标", "我方新增目标")):
-            headers = {name: names.index(name) for name in ("月份", "当月目标", "我方新增目标")}
-            for candidate in rows[row_index + 1:]:
-                month_name = cell_text(candidate[headers["月份"]]) if len(candidate) > headers["月份"] else ""
-                if month_name != f"{month}月":
-                    continue
-                revenue = cell_number(candidate[headers["当月目标"]]) if len(candidate) > headers["当月目标"] else None
-                users = cell_number(candidate[headers["我方新增目标"]]) if len(candidate) > headers["我方新增目标"] else None
-                if revenue is None or users is None:
-                    raise RuntimeError(f"目标完成度 {month_name} target values are missing.")
-                return {"血量": revenue, "360新增": users}
-    raise RuntimeError("目标完成度 lacks the required target headers or current-month row.")
+    """Read total revenue from B and 360 new-user target from its named block."""
+    month_row = next(
+        (row for row in rows if row and cell_text(row[0]) == f"{month}\u6708"),
+        None,
+    )
+    if month_row is None or len(month_row) <= 1:
+        raise RuntimeError(f"\u76ee\u6807\u5b8c\u6210\u5ea6 does not contain a {month}\u6708 target row with column B.")
+    revenue = cell_number(month_row[1])
+    if revenue is None:
+        raise RuntimeError(f"\u76ee\u6807\u5b8c\u6210\u5ea6 {month}\u6708 column B revenue target is missing.")
+
+    users = None
+    block_name = "\u5408\u4f5c\u65b9\u65b0\u589e\u76ee\u6807"
+    for row_index, block_row in enumerate(rows[:-1]):
+        starts = [index for index, cell in enumerate(block_row) if cell_text(cell) == block_name]
+        if not starts:
+            continue
+        start = starts[0]
+        later_starts = [
+            index for index, cell in enumerate(block_row[start + 1:], start + 1)
+            if cell_text(cell).endswith("\u76ee\u6807")
+        ]
+        end = later_starts[0] if later_starts else len(rows[row_index + 1])
+        header_row = rows[row_index + 1]
+        for column in range(start, end):
+            if cell_text(header_row[column]) == "360":
+                users = cell_number(month_row[column]) if len(month_row) > column else None
+                break
+        if users is not None:
+            break
+    if users is None:
+        raise RuntimeError("\u76ee\u6807\u5b8c\u6210\u5ea6 lacks the 360 target under \u5408\u4f5c\u65b9\u65b0\u589e\u76ee\u6807.")
+    return {"\u8840\u91cf": revenue, "360\u65b0\u589e": users}
 
 
 def series_by_key(records: list[dict], metric: str, predicate=lambda record: True) -> dict[tuple[str, str], dict[int, float]]:

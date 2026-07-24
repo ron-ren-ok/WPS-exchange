@@ -41,18 +41,17 @@ class DailyProgressTests(unittest.TestCase):
         self.assertNotIn("\u6570\u636e\u72b6\u6001", forecast)
         self.assertIn("预计本月目标可达成", forecast)
 
-    def test_monthly_targets_find_headers_dynamically(self):
+    def test_monthly_targets_use_column_b_and_360_target_block(self):
         rows = [
-            [{"formattedValue": "说明"}],
-            [{"formattedValue": "我方新增目标"}, {"formattedValue": "月份"}, {"formattedValue": "当月目标"}],
+            [{}, {}, {"formattedValue": "\u5408\u4f5c\u65b9\u65b0\u589e\u76ee\u6807"}],
+            [{"formattedValue": "\u6708\u4efd"}, {"formattedValue": "\u65e7\u65b0\u589e\u76ee\u6807"}, {"formattedValue": "360"}],
             [
-                {"effectiveValue": {"numberValue": 60}},
-                {"formattedValue": "7月"},
+                {"formattedValue": "7\u6708"},
                 {"effectiveValue": {"numberValue": 23}},
+                {"effectiveValue": {"numberValue": 60}},
             ],
         ]
-        self.assertEqual(DAILY.monthly_targets(rows, 7), {"血量": 23.0, "360新增": 60.0})
-
+        self.assertEqual(DAILY.monthly_targets(rows, 7), {"\u8840\u91cf": 23.0, "360\u65b0\u589e": 60.0})
 
 if __name__ == "__main__":
     unittest.main()
