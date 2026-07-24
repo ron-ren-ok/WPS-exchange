@@ -132,7 +132,8 @@ def missing_data_notice(records: list[dict], expected_date: date) -> str | None:
     first_date = min(record["date"] for record in relevant)
     present_by_date: dict[date, set[str]] = defaultdict(set)
     for record in relevant:
-        present_by_date[record["date"]].add(record["channel"])
+        if record.get("new") is not None and record.get("mau") is not None:
+            present_by_date[record["date"]].add(record["channel"])
     current = first_date
     while current <= expected_date:
         missing = expected_channels - present_by_date.get(current, set())

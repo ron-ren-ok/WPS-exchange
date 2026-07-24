@@ -42,10 +42,20 @@ class AcquisitionProgressTests(unittest.TestCase):
 
     def test_missing_single_channel_names_the_channel(self):
         records = [
-            {"date": date(2026, 7, 22), "channel": "三方换量"},
-            {"date": date(2026, 7, 22), "channel": "安卓导PC"},
+            {"date": date(2026, 7, 22), "channel": "三方换量", "new": 1, "mau": 1},
+            {"date": date(2026, 7, 22), "channel": "安卓导PC", "new": 1, "mau": 1},
         ]
         self.assertEqual(REPORT.missing_data_notice(records, date(2026, 7, 22)), "注意：7月22日Affiliate数据为空，请检查。")
+
+
+    def test_partial_channel_data_sends_direct_notice(self):
+        rows = [
+            [cell("日期"), cell("渠道"), cell("新增设备数"), cell("近30日活跃设备数_MAD")],
+            [cell(number=46226), cell("三方换量"), cell(), cell(number=10000)],
+            [cell(number=46226), cell("安卓导PC"), cell(number=10000), cell(number=10000)],
+            [cell(number=46226), cell("Affiliate"), cell(number=10000), cell(number=10000)],
+        ]
+        self.assertEqual(REPORT.report_text(rows, [], expected_date=date(2026, 7, 23)), "注意：7月23日三方数据为空，请检查。")
 
 
     def test_card_metrics_use_paragraph_breaks(self):
