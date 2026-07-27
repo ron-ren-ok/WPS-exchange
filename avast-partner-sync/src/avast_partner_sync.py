@@ -54,7 +54,14 @@ def parse_avast_page(page_text):
     """Return daily records from the first PBI page, with strict Total semantics."""
     # PBI exports repeat this header for the new-user and revenue tables.
     # The first table and its immediately following Total pair are authoritative.
-    header_lines = re.findall(r"(?m)^Country Code\s+(.+)$", page_text)
+    # pdfplumber may split or pad the header (for example "Country\nCode")
+    # when Power BI changes column widths. Match the semantic header across
+    # whitespace while still requiring the date columns and Grand Total.
+    header_lines = re.findall(
+        r"Country\s+Code\s+((?:(?:\d{4}-\d{2}-\d{2})\s+)+Grand\s+Total)",
+        page_text,
+        flags=re.IGNORECASE,
+    )
     if not header_lines:
         raise ValueError("Avast page-one Country Code header was not found")
     days = re.findall(r"\b\d{4}-\d{2}-\d{2}\b", header_lines[0])

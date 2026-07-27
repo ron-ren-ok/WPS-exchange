@@ -37,6 +37,21 @@ class AvastTests(unittest.TestCase):
             "Country Code 2026-07-14 2026-07-15 Grand Total\nTotal $178 $173 $351",
         )
         self.assertEqual(AVAST.parse_avast_page(repeated)[date(2026, 7, 14)]["new_users"], 178)
+
+    def test_accepts_country_code_header_split_across_lines(self):
+        wrapped = PAGE.replace(
+            "Country Code 2026-07-14 2026-07-15 Grand Total",
+            "Country\nCode   2026-07-14\n2026-07-15   Grand Total",
+        )
+        self.assertEqual(AVAST.parse_avast_page(wrapped), {
+            date(2026, 7, 14): {"new_users": 178, "blood_volume": 178},
+            date(2026, 7, 15): {"new_users": 173, "blood_volume": 173},
+        })
+
+    def test_rejects_date_text_without_country_code_header(self):
+        bad = PAGE.replace("Country Code ", "")
+        with self.assertRaisesRegex(ValueError, "Country Code header"):
+            AVAST.parse_avast_page(bad)
     def test_plans_append_for_new_h5_long_format_record(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
         updates, appends, overwrites = AVAST.plan_writes(
