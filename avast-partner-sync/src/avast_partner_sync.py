@@ -57,7 +57,8 @@ def parse_avast_page(page_text):
     # headers must be recovered; Power BI may omit table labels during PDF
     # text extraction, so labels such as Country Code/Grand Total are hints,
     # not requirements.
-    totals = re.findall(r"(?m)^Total\s+(.+)$", page_text)
+    total_pattern = r"(?im)^[^\w$\d\r\n]*(?:Grand[ \t]+)?Total[ \t]+(.+)$"
+    totals = re.findall(total_pattern, page_text)
     new_line = next((line for line in totals if "$" not in line), None)
     if new_line is None:
         raise ValueError("Avast first non-$ Total was not found")
@@ -71,7 +72,7 @@ def parse_avast_page(page_text):
         raise ValueError("Avast Total value columns are missing or inconsistent")
 
     expected_days = len(new_values) - 1  # final value is the grand total
-    first_total = re.search(r"(?m)^Total\s+", page_text)
+    first_total = re.search(total_pattern, page_text)
     header_region = page_text[:first_total.start()] if first_total else page_text
     date_token = (
         r"(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}"

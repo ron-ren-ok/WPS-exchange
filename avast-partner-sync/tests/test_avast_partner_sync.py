@@ -26,6 +26,25 @@ class AvastTests(unittest.TestCase):
             date(2026, 7, 15): {"new_users": 173, "blood_volume": 173},
         })
 
+    def test_accepts_grand_total_rows(self):
+        grand = PAGE.replace("Total 178 173 351", "Grand Total 178 173 351").replace(
+            "Total $178 $173 $351",
+            "Grand Total $178 $173 $351",
+        )
+        self.assertEqual(AVAST.parse_avast_page(grand), {
+            date(2026, 7, 14): {"new_users": 178, "blood_volume": 178},
+            date(2026, 7, 15): {"new_users": 173, "blood_volume": 173},
+        })
+
+    def test_accepts_power_bi_glyph_before_total(self):
+        decorated = PAGE.replace("Total 178 173 351", "\ue116 Total 178 173 351").replace(
+            "Total $178 $173 $351",
+            "\ue116 Total $178 $173 $351",
+        )
+        self.assertEqual(
+            AVAST.parse_avast_page(decorated)[date(2026, 7, 15)]["blood_volume"],
+            173,
+        )
     def test_rejects_reordered_totals(self):
         bad = PAGE.replace("Total 178 173 351\nTotal $178 $173 $351", "Total $178 $173 $351\nTotal 178 173 351")
         with self.assertRaisesRegex(ValueError, "immediately follow"):
