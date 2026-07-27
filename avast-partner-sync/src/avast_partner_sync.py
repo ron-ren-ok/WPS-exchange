@@ -34,7 +34,7 @@ def parse_day(value):
             return (datetime(1899, 12, 30) + timedelta(days=serial)).date()
     except ValueError:
         pass
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d.%m.%Y"):
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d.%m.%Y"):
         try:
             return datetime.strptime(text, fmt).date()
         except ValueError:
@@ -52,19 +52,25 @@ def number(value):
 
 def parse_avast_page(page_text):
     """Return daily records from the first PBI page, with strict Total semantics."""
-    # PBI exports repeat this header for the new-user and revenue tables.
-    # The first table and its immediately following Total pair are authoritative.
-    # pdfplumber may split or pad the header (for example "Country\nCode")
-    # when Power BI changes column widths. Match the semantic header across
-    # whitespace while still requiring the date columns and Grand Total.
-    header_lines = re.findall(
-        r"Country\s+Code\s+((?:(?:\d{4}-\d{2}-\d{2})\s+)+Grand\s+Total)",
-        page_text,
+    # Power BI/pdfplumber can split or omit the left-most "Country Code"
+    # label. Recover the closest date header before the first Total, while
+    # still requiring a contiguous date sequence followed by Grand Total.
+    date_token = r"(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[./]\d{1,2}[./]\d{4})"
+    first_total = re.search(r"(?m)^Total\s+", page_text)
+    header_region = page_text[:first_total.start()] if first_total else page_text
+    labelled = re.findall(
+        rf"Country\s+Code\s+((?:{date_token}\s+)+Grand\s+Total)",
+        header_region,
         flags=re.IGNORECASE,
     )
-    if not header_lines:
-        raise ValueError("Avast page-one Country Code header was not found")
-    days = re.findall(r"\b\d{4}-\d{2}-\d{2}\b", header_lines[0])
+    candidates = labelled or re.findall(
+        rf"((?:{date_token}\s+)+Grand\s+Total)",
+        header_region,
+        flags=re.IGNORECASE,
+    )
+    if not candidates:
+        raise ValueError("Avast page-one date header was not found")
+    days = re.findall(date_token, candidates[-1])
     if not days or len(days) != len(set(days)):
         raise ValueError("Avast first-table date headers are missing or duplicated")
     totals = re.findall(r"(?m)^Total\s+(.+)$", page_text)

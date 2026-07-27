@@ -48,9 +48,26 @@ class AvastTests(unittest.TestCase):
             date(2026, 7, 15): {"new_users": 173, "blood_volume": 173},
         })
 
-    def test_rejects_date_text_without_country_code_header(self):
-        bad = PAGE.replace("Country Code ", "")
-        with self.assertRaisesRegex(ValueError, "Country Code header"):
+    def test_recovers_date_header_when_country_code_is_omitted(self):
+        omitted = PAGE.replace("Country Code ", "")
+        self.assertEqual(
+            AVAST.parse_avast_page(omitted)[date(2026, 7, 14)]["new_users"],
+            178,
+        )
+
+    def test_accepts_us_style_date_headers(self):
+        us_dates = PAGE.replace(
+            "2026-07-14 2026-07-15",
+            "7/14/2026 7/15/2026",
+        )
+        self.assertEqual(set(AVAST.parse_avast_page(us_dates)), {
+            date(2026, 7, 14),
+            date(2026, 7, 15),
+        })
+
+    def test_rejects_page_without_date_header(self):
+        bad = PAGE.replace("Country Code 2026-07-14 2026-07-15 Grand Total\n", "")
+        with self.assertRaisesRegex(ValueError, "date header"):
             AVAST.parse_avast_page(bad)
     def test_plans_append_for_new_h5_long_format_record(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
