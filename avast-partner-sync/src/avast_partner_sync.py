@@ -34,7 +34,7 @@ def parse_day(value):
             return (datetime(1899, 12, 30) + timedelta(days=serial)).date()
     except ValueError:
         pass
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d.%m.%Y"):
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d.%m.%Y", "%d %b %Y", "%d %B %Y", "%b %d, %Y", "%B %d, %Y", "%b %d %Y", "%B %d %Y"):
         try:
             return datetime.strptime(text, fmt).date()
         except ValueError:
@@ -52,27 +52,11 @@ def number(value):
 
 def parse_avast_page(page_text):
     """Return daily records from the first PBI page, with strict Total semantics."""
-    # Power BI/pdfplumber can split or omit the left-most "Country Code"
-    # label. Recover the closest date header before the first Total, while
-    # still requiring a contiguous date sequence followed by Grand Total.
-    date_token = r"(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[./]\d{1,2}[./]\d{4})"
-    first_total = re.search(r"(?m)^Total\s+", page_text)
-    header_region = page_text[:first_total.start()] if first_total else page_text
-    labelled = re.findall(
-        rf"Country\s+Code\s+((?:{date_token}\s+)+Grand\s+Total)",
-        header_region,
-        flags=re.IGNORECASE,
-    )
-    candidates = labelled or re.findall(
-        rf"((?:{date_token}\s+)+Grand\s+Total)",
-        header_region,
-        flags=re.IGNORECASE,
-    )
-    if not candidates:
-        raise ValueError("Avast page-one date header was not found")
-    days = re.findall(date_token, candidates[-1])
-    if not days or len(days) != len(set(days)):
-        raise ValueError("Avast first-table date headers are missing or duplicated")
+    # The first non-currency Total and its immediately following currency
+    # Total are authoritative. Their column count determines how many date
+    # headers must be recovered; Power BI may omit table labels during PDF
+    # text extraction, so labels such as Country Code/Grand Total are hints,
+    # not requirements.
     totals = re.findall(r"(?m)^Total\s+(.+)$", page_text)
     new_line = next((line for line in totals if "$" not in line), None)
     if new_line is None:
@@ -83,11 +67,33 @@ def parse_avast_page(page_text):
         raise ValueError("Avast $ Total must immediately follow the non-$ Total")
     new_values = re.findall(r"\d[\d,]*", new_line)
     blood_values = re.findall(r"\$[\d,]+(?:\.\d+)?", blood_line)
-    if len(new_values) != len(days) + 1 or len(blood_values) != len(days) + 1:
-        raise ValueError("Avast Total values do not align exactly with dates")
-    return {parse_day(day): {"new_users": number(new), "blood_volume": number(blood)}
-            for day, new, blood in zip(days, new_values[:len(days)], blood_values[:len(days)])}
+    if len(new_values) < 2 or len(new_values) != len(blood_values):
+        raise ValueError("Avast Total value columns are missing or inconsistent")
 
+    expected_days = len(new_values) - 1  # final value is the grand total
+    first_total = re.search(r"(?m)^Total\s+", page_text)
+    header_region = page_text[:first_total.start()] if first_total else page_text
+    date_token = (
+        r"(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}"
+        r"|\d{1,2}[./]\d{1,2}[./]\d{4}"
+        r"|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}"
+        r"|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})"
+    )
+    found_days = re.findall(date_token, header_region, flags=re.IGNORECASE)
+    if len(found_days) < expected_days:
+        raise ValueError(
+            f"Avast page-one date header columns are missing: expected {expected_days}, found {len(found_days)}"
+        )
+    days = found_days[-expected_days:]
+    parsed_days = [parse_day(day) for day in days]
+    if len(parsed_days) != len(set(parsed_days)):
+        raise ValueError("Avast first-table date headers are duplicated")
+    if len(new_values) != len(parsed_days) + 1 or len(blood_values) != len(parsed_days) + 1:
+        raise ValueError("Avast Total values do not align exactly with dates")
+    return {
+        day: {"new_users": number(new), "blood_volume": number(blood)}
+        for day, new, blood in zip(parsed_days, new_values[:-1], blood_values[:-1])
+    }
 
 def pdf_rows(raw_pdf):
     with pdfplumber.open(io.BytesIO(raw_pdf)) as pdf:

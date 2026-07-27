@@ -65,6 +65,25 @@ class AvastTests(unittest.TestCase):
             date(2026, 7, 15),
         })
 
+    def test_recovers_dates_without_table_labels_or_grand_total(self):
+        extracted = PAGE.replace(
+            "Country Code 2026-07-14 2026-07-15 Grand Total",
+            "Report generated 2026-07-01\n2026-07-14 2026-07-15",
+        )
+        self.assertEqual(set(AVAST.parse_avast_page(extracted)), {
+            date(2026, 7, 14),
+            date(2026, 7, 15),
+        })
+
+    def test_accepts_month_name_date_headers(self):
+        named = PAGE.replace(
+            "Country Code 2026-07-14 2026-07-15 Grand Total",
+            "14 Jul 2026 15 Jul 2026",
+        )
+        self.assertEqual(set(AVAST.parse_avast_page(named)), {
+            date(2026, 7, 14),
+            date(2026, 7, 15),
+        })
     def test_rejects_page_without_date_header(self):
         bad = PAGE.replace("Country Code 2026-07-14 2026-07-15 Grand Total\n", "")
         with self.assertRaisesRegex(ValueError, "date header"):
