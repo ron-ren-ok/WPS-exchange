@@ -169,12 +169,14 @@ def imap_messages(client, subject, sent_on):
     )
     if status != "OK":
         raise RuntimeError("Gmail IMAP search failed")
-    for uid in reversed(data[0].split()):
-        status, payload = client.uid("fetch", uid, "(RFC822)")
-        if status != "OK" or not payload or not isinstance(payload[0], tuple):
-            continue
+    uids = data[0].split()
+    if not uids:
+        return
+    # Gmail UIDs are monotonically increasing. Fetch only the newest matching
+    # report instead of traversing older messages from the same day.
+    status, payload = client.uid("fetch", uids[-1], "(RFC822)")
+    if status == "OK" and payload and isinstance(payload[0], tuple):
         yield email.message_from_bytes(payload[0][1])
-
 
 def source_rows(client, surface, start, end):
     spec = SURFACES[surface]

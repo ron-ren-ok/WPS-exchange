@@ -166,6 +166,25 @@ class AvastTests(unittest.TestCase):
         self.assertEqual(list(AVAST.imap_messages(client, "Avast report", date(2026, 7, 26))), [])
         self.assertEqual(client.mailbox, ("[Gmail]/All Mail", True))
         self.assertEqual(client.uid_args, ("search", None, "SENTON", "26-Jul-2026", "SUBJECT", '"Avast report"'))
+    def test_imap_fetches_only_the_newest_matching_message(self):
+        class FakeImap:
+            def list(self):
+                return "OK", [b'* LIST (\\HasNoChildren \\All) "/" "[Gmail]/All Mail"']
+
+            def select(self, mailbox, readonly):
+                return "OK", [b"0"]
+
+            def uid(self, *args):
+                self.calls.append(args)
+                if args[0] == "search":
+                    return "OK", [b"41 42"]
+                return "OK", [(b"42", b"From: no-reply-powerbi@microsoft.com\n\nbody")]
+
+        client = FakeImap()
+        client.calls = []
+        messages = list(AVAST.imap_messages(client, "Avast report", date(2026, 7, 26)))
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(client.calls[-1], ("fetch", b"42", "(RFC822)"))
     def test_column_names(self):
         self.assertEqual(AVAST.col_name(0), "A")
         self.assertEqual(AVAST.col_name(25), "Z")
