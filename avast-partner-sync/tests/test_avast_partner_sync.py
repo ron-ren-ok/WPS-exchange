@@ -146,7 +146,7 @@ class AvastTests(unittest.TestCase):
         message.add_attachment(b"pdf", maintype="application", subtype="pdf", filename="report.pdf")
         self.assertTrue(AVAST.verified_sender(message))
         self.assertEqual(list(AVAST.attachments(message)), [b"pdf"])
-    def test_imap_search_uses_standard_quoted_subject(self):
+    def test_imap_search_is_limited_to_the_report_date_and_subject(self):
         class FakeImap:
             def __init__(self):
                 self.uid_args = None
@@ -163,9 +163,9 @@ class AvastTests(unittest.TestCase):
                 return "OK", [b""]
 
         client = FakeImap()
-        self.assertEqual(list(AVAST.imap_messages(client, "Avast report")), [])
+        self.assertEqual(list(AVAST.imap_messages(client, "Avast report", date(2026, 7, 26))), [])
         self.assertEqual(client.mailbox, ("[Gmail]/All Mail", True))
-        self.assertEqual(client.uid_args, ("search", None, "SUBJECT", '"Avast report"'))
+        self.assertEqual(client.uid_args, ("search", None, "SENTON", "26-Jul-2026", "SUBJECT", '"Avast report"'))
     def test_column_names(self):
         self.assertEqual(AVAST.col_name(0), "A")
         self.assertEqual(AVAST.col_name(25), "Z")

@@ -155,12 +155,18 @@ def select_all_mail(client):
         raise RuntimeError(f"Gmail IMAP could not open mailbox: {mailbox}")
 
 
-def imap_messages(client, subject):
+def imap_messages(client, subject, sent_on):
     select_all_mail(client)
-    # X-GM-RAW needs Gmail-specific literal quoting and was rejected by the
-    # server in GitHub Actions. Standard IMAP SUBJECT search is portable;
-    # All Mail excludes spam/trash and later checks still verify sender/PDF.
-    status, data = client.uid("search", None, "SUBJECT", f'"{subject}"')
+    # Restrict the server-side search to the report date. This prevents old
+    # messages with the same subject from being fetched or parsed.
+    status, data = client.uid(
+        "search",
+        None,
+        "SENTON",
+        sent_on.strftime("%d-%b-%Y"),
+        "SUBJECT",
+        f'"{subject}"',
+    )
     if status != "OK":
         raise RuntimeError("Gmail IMAP search failed")
     for uid in reversed(data[0].split()):
@@ -174,7 +180,7 @@ def source_rows(client, surface, start, end):
     spec = SURFACES[surface]
     resolved = {}
     rejected = 0
-    for message in imap_messages(client, spec["subject"]):
+    for message in imap_messages(client, spec["subject"], end):
         if not verified_sender(message):
             rejected += 1
             continue
