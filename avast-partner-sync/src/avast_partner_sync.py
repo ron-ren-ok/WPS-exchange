@@ -178,11 +178,11 @@ def imap_messages(client, subject, sent_on):
     if status == "OK" and payload and isinstance(payload[0], tuple):
         yield email.message_from_bytes(payload[0][1])
 
-def source_rows(client, surface, start, end):
+def source_rows(client, surface, start, end, email_date):
     spec = SURFACES[surface]
     resolved = {}
     rejected = 0
-    for message in imap_messages(client, spec["subject"], end):
+    for message in imap_messages(client, spec["subject"], email_date):
         if not verified_sender(message):
             rejected += 1
             continue
@@ -314,7 +314,11 @@ def main():
     secrets = {name: os.environ.get(name) for name in ("GMAIL_IMAP_USERNAME", "GMAIL_APP_PASSWORD", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON")}
     if not all(secrets.values()):
         raise RuntimeError("missing required GitHub Actions secret")
-    end = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    # Reports arriving after midnight Beijing time contain data through the
+    # previous day, so their email date and data end date are different.
+    end = parse_day(args.end_date) if args.end_date else today - timedelta(days=1)
+    email_date = today
     sheets = sheets_service(secrets["GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"])
     headers, existing_rows = get_sheet(sheets)
     start = parse_day(args.start_date) if args.start_date else first_missing(existing_rows, end)
@@ -322,7 +326,7 @@ def main():
         raise RuntimeError("start date is after end date")
     gmail = gmail_imap_client(secrets["GMAIL_IMAP_USERNAME"], secrets["GMAIL_APP_PASSWORD"])
     try:
-        sources = {surface: source_rows(gmail, surface, start, end) for surface in SURFACES}
+        sources = {surface: source_rows(gmail, surface, start, end, email_date) for surface in SURFACES}
     finally:
         gmail.logout()
     updates, appends, overwrites = plan_writes(headers, existing_rows, sources, args.allow_overwrite)
