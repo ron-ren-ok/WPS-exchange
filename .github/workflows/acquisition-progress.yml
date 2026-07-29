@@ -2,8 +2,8 @@ name: Acquisition progress
 
 on:
   schedule:
-    # 06:00 Beijing time (22:00 UTC on the preceding day), every day.
-    - cron: "0 22 * * *"
+    # 07:00 Beijing time (23:00 UTC on the preceding day), every day.
+    - cron: "0 23 * * *"
   workflow_dispatch:
     inputs:
       webhook_target:
