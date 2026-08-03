@@ -64,5 +64,18 @@ class DailyProgressTests(unittest.TestCase):
         self.assertIn("360\u6570\u636e\u4e0d\u5168", daily)
         self.assertIn("360 \u65b0\u589e\u76ee\u6807\u9884\u6d4b\uff1a\u5f53\u6708\u6682\u672a\u56de\u4f20\uff0c\u6682\u4e0d\u6d4b\u7b97", forecast)
 
+
+    def test_report_includes_partner_level_blood_details(self):
+        records = [
+            {"date": date(2026, 8, 1), "partner": "Avast", "operation": "bubble", "\u65b0\u589e": 1000, "\u8840\u91cf": 5000},
+            {"date": date(2026, 8, 2), "partner": "Opera", "operation": "popup", "\u65b0\u589e": 2000, "\u8840\u91cf": 10000},
+            {"date": date(2026, 8, 2), "partner": "360", "operation": "bubble", "\u65b0\u589e": 3000, "\u8840\u91cf": None},
+        ]
+        daily, forecast = DAILY.report(records, {"\u8840\u91cf": 25, "360\u65b0\u589e": 60}, date(2026, 8, 2))
+        self.assertIn("\u5408\u4f5c\u65b9\u660e\u7ec6", daily)
+        self.assertIn("Avast 0.50\u4e07\u7f8e\u5143", daily)
+        self.assertIn("Opera 1.00\u4e07\u7f8e\u5143", daily)
+        self.assertIn("\u5408\u4f5c\u65b9\u9884\u6d4b", forecast)
+
 if __name__ == "__main__":
     unittest.main()
