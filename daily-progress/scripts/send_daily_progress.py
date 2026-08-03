@@ -240,9 +240,13 @@ def forecast_line(label: str, summary: dict, target: float, cutoff: date) -> str
     )
 
 
-def source_status(records: list[dict], cutoff: date) -> str:
+def metric_available(records: list[dict], metric: str, predicate=lambda record: True) -> bool:
+    return any(predicate(record) and record[metric] is not None for record in records)
+
+
+def source_status(records: list[dict], cutoff: date, required_partners: tuple[str, ...] = ()) -> str:
     """One returned position means the partner is not marked incomplete."""
-    partners = sorted({record["partner"] for record in records})
+    partners = sorted({record["partner"] for record in records} | set(required_partners))
     returned = {record["partner"] for record in records if record["date"] == cutoff}
     incomplete = [partner for partner in partners if partner not in returned]
     if not incomplete:
@@ -255,22 +259,33 @@ def report(records: list[dict], targets: dict[str, float], cutoff: date) -> tupl
     if not monthly:
         raise RuntimeError(f"\u5408\u4f5c\u65b9\u65b0\u589e\u8840\u91cf has no records for {cutoff:%Y-%m}.")
     revenue = actual_metric_summary(monthly, "\u8840\u91cf", cutoff)
-    users = actual_metric_summary(monthly, "\u65b0\u589e", cutoff, lambda record: record["partner"] == "360")
     forecast_revenue = forecast_metric_summary(monthly, "\u8840\u91cf", cutoff)
-    forecast_users = forecast_metric_summary(monthly, "\u65b0\u589e", cutoff, lambda record: record["partner"] == "360")
-    status = source_status(monthly, cutoff)
+    has_360_new = metric_available(monthly, "\u65b0\u589e", lambda record: record["partner"] == "360")
+    users = actual_metric_summary(monthly, "\u65b0\u589e", cutoff, lambda record: record["partner"] == "360") if has_360_new else None
+    forecast_users = forecast_metric_summary(monthly, "\u65b0\u589e", cutoff, lambda record: record["partner"] == "360") if has_360_new else None
+    status = source_status(monthly, cutoff, required_partners=("360",))
+    daily_users = (
+        progress_line('360 ', users, targets['360\u65b0\u589e'], cutoff)
+        if users is not None
+        else "\U0001f534**360 \u65b0\u589e\uff1a\u5f53\u6708\u6682\u672a\u56de\u4f20**"
+    )
+    forecast_users_line = (
+        forecast_line('360 ', forecast_users, targets['360\u65b0\u589e'], cutoff)
+        if forecast_users is not None
+        else "\U0001f534**360 \u65b0\u589e\u76ee\u6807\u9884\u6d4b\uff1a\u5f53\u6708\u6682\u672a\u56de\u4f20\uff0c\u6682\u4e0d\u6d4b\u7b97**"
+    )
     daily = (
         "\u27a1\ufe0f**\u8840\u91cf\uff08\u4e07\u7f8e\u5143\uff09**\n\n"
         f"{progress_line('', revenue, targets['\u8840\u91cf'], cutoff)}\n\n"
         "\u27a1\ufe0f**\u65b0\u589e\uff08\u4e07\uff09**\n\n"
-        f"{progress_line('360 ', users, targets['360\u65b0\u589e'], cutoff)}\n\n"
+        f"{daily_users}\n\n"
         f"\u27a1\ufe0f**\u6570\u636e\u72b6\u6001\uff1a** {status}\n\n[\u67e5\u770b\u5408\u4f5c\u65b9\u65b0\u589e\u8840\u91cf]({SHEET_URL})"
     )
     forecast = (
         "\u27a1\ufe0f**\u8840\u91cf\uff08\u4e07\u7f8e\u5143\uff09**\n\n"
         f"{forecast_line('', forecast_revenue, targets['\u8840\u91cf'], cutoff)}\n\n"
         "\u27a1\ufe0f**\u65b0\u589e\uff08\u4e07\uff09**\n\n"
-        f"{forecast_line('360 ', forecast_users, targets['360\u65b0\u589e'], cutoff)}\n\n"
+        f"{forecast_users_line}\n\n"
         f"[\u67e5\u770b\u5408\u4f5c\u65b9\u65b0\u589e\u8840\u91cf]({SHEET_URL})"
     )
     return daily, forecast

@@ -53,5 +53,16 @@ class DailyProgressTests(unittest.TestCase):
         ]
         self.assertEqual(DAILY.monthly_targets(rows, 7), {"\u8840\u91cf": 23.0, "360\u65b0\u589e": 60.0})
 
+
+    def test_report_keeps_blood_card_when_360_has_not_returned(self):
+        records = [
+            {"date": date(2026, 8, 1), "partner": "Avast", "operation": "\u6c14\u6ce1", "\u65b0\u589e": 1000, "\u8840\u91cf": 10000},
+            {"date": date(2026, 8, 2), "partner": "Avast", "operation": "\u6c14\u6ce1", "\u65b0\u589e": 2000, "\u8840\u91cf": 20000},
+        ]
+        daily, forecast = DAILY.report(records, {"\u8840\u91cf": 23, "360\u65b0\u589e": 60}, date(2026, 8, 2))
+        self.assertIn("360 \u65b0\u589e\uff1a\u5f53\u6708\u6682\u672a\u56de\u4f20", daily)
+        self.assertIn("360\u6570\u636e\u4e0d\u5168", daily)
+        self.assertIn("360 \u65b0\u589e\u76ee\u6807\u9884\u6d4b\uff1a\u5f53\u6708\u6682\u672a\u56de\u4f20\uff0c\u6682\u4e0d\u6d4b\u7b97", forecast)
+
 if __name__ == "__main__":
     unittest.main()
