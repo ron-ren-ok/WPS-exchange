@@ -212,24 +212,6 @@ def forecast_metric_summary(records: list[dict], metric: str, cutoff: date, pred
     return {"cumulative": cumulative, "projected": projected}
 
 
-def actual_revenue_detail(records: list[dict]) -> str:
-    totals: dict[str, float] = defaultdict(float)
-    for record in records:
-        if record["\u8840\u91cf"] is not None:
-            totals[record["partner"]] += record["\u8840\u91cf"] / RAW_UNIT_DIVISOR
-    details = "\uff1b".join(f"{name} {value:.2f}\u4e07\u7f8e\u5143" for name, value in sorted(totals.items()))
-    return f"\U0001f538**\u5408\u4f5c\u65b9\u660e\u7ec6\uff1a** {details}"
-
-
-def forecast_revenue_detail(records: list[dict], cutoff: date) -> str:
-    series = partner_daily_series(records, "\u8840\u91cf")
-    details = []
-    for name, values in sorted(series.items()):
-        cumulative, projected = projected_partner_series(values, cutoff)
-        details.append(f"{name} \u6d4b\u7b97 {cumulative:.2f}\u4e07\u7f8e\u5143 / \u9884\u8ba1 {projected:.2f}\u4e07\u7f8e\u5143")
-    return f"\U0001f538**\u5408\u4f5c\u65b9\u9884\u6d4b\uff1a** " + "\uff1b".join(details)
-
-
 def progress_line(label: str, summary: dict, target: float, cutoff: date) -> str:
     completion = summary["cumulative"] / target * 100
     time_progress = cutoff.day / calendar.monthrange(cutoff.year, cutoff.month)[1] * 100
@@ -295,7 +277,6 @@ def report(records: list[dict], targets: dict[str, float], cutoff: date) -> tupl
     daily = (
         "\u27a1\ufe0f**\u8840\u91cf\uff08\u4e07\u7f8e\u5143\uff09**\n\n"
         f"{progress_line('', revenue, targets['\u8840\u91cf'], cutoff)}\n\n"
-        f"{actual_revenue_detail(monthly)}\n\n"
         "\u27a1\ufe0f**\u65b0\u589e\uff08\u4e07\uff09**\n\n"
         f"{daily_users}\n\n"
         f"\u27a1\ufe0f**\u6570\u636e\u72b6\u6001\uff1a** {status}\n\n[\u67e5\u770b\u5408\u4f5c\u65b9\u65b0\u589e\u8840\u91cf]({SHEET_URL})"
@@ -303,7 +284,6 @@ def report(records: list[dict], targets: dict[str, float], cutoff: date) -> tupl
     forecast = (
         "\u27a1\ufe0f**\u8840\u91cf\uff08\u4e07\u7f8e\u5143\uff09**\n\n"
         f"{forecast_line('', forecast_revenue, targets['\u8840\u91cf'], cutoff)}\n\n"
-        f"{forecast_revenue_detail(monthly, cutoff)}\n\n"
         "\u27a1\ufe0f**\u65b0\u589e\uff08\u4e07\uff09**\n\n"
         f"{forecast_users_line}\n\n"
         f"[\u67e5\u770b\u5408\u4f5c\u65b9\u65b0\u589e\u8840\u91cf]({SHEET_URL})"
