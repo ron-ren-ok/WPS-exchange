@@ -34,7 +34,7 @@ def parse_day(value):
             return (datetime(1899, 12, 30) + timedelta(days=serial)).date()
     except ValueError:
         pass
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d.%m.%Y"):
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d.%m.%Y", "%d %b %Y", "%d %B %Y", "%b %d, %Y", "%B %d, %Y", "%b %d %Y", "%B %d %Y"):
         try:
             return datetime.strptime(text, fmt).date()
         except ValueError:
@@ -52,15 +52,13 @@ def number(value):
 
 def parse_avast_page(page_text):
     """Return daily records from the first PBI page, with strict Total semantics."""
-    # PBI exports repeat this header for the new-user and revenue tables.
-    # The first table and its immediately following Total pair are authoritative.
-    header_lines = re.findall(r"(?m)^Country Code\s+(.+)$", page_text)
-    if not header_lines:
-        raise ValueError("Avast page-one Country Code header was not found")
-    days = re.findall(r"\b\d{4}-\d{2}-\d{2}\b", header_lines[0])
-    if not days or len(days) != len(set(days)):
-        raise ValueError("Avast first-table date headers are missing or duplicated")
-    totals = re.findall(r"(?m)^Total\s+(.+)$", page_text)
+    # The first non-currency Total and its immediately following currency
+    # Total are authoritative. Their column count determines how many date
+    # headers must be recovered; Power BI may omit table labels during PDF
+    # text extraction, so labels such as Country Code/Grand Total are hints,
+    # not requirements.
+    total_pattern = r"(?im)^[^\w$\d\r\n]*(?:Grand[ \t]+)?Total[ \t]+(.+)$"
+    totals = re.findall(total_pattern, page_text)
     new_line = next((line for line in totals if "$" not in line), None)
     if new_line is None:
         raise ValueError("Avast first non-$ Total was not found")
@@ -70,11 +68,33 @@ def parse_avast_page(page_text):
         raise ValueError("Avast $ Total must immediately follow the non-$ Total")
     new_values = re.findall(r"\d[\d,]*", new_line)
     blood_values = re.findall(r"\$[\d,]+(?:\.\d+)?", blood_line)
-    if len(new_values) != len(days) + 1 or len(blood_values) != len(days) + 1:
-        raise ValueError("Avast Total values do not align exactly with dates")
-    return {parse_day(day): {"new_users": number(new), "blood_volume": number(blood)}
-            for day, new, blood in zip(days, new_values[:len(days)], blood_values[:len(days)])}
+    if len(new_values) < 2 or len(new_values) != len(blood_values):
+        raise ValueError("Avast Total value columns are missing or inconsistent")
 
+    expected_days = len(new_values) - 1  # final value is the grand total
+    first_total = re.search(total_pattern, page_text)
+    header_region = page_text[:first_total.start()] if first_total else page_text
+    date_token = (
+        r"(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}"
+        r"|\d{1,2}[./]\d{1,2}[./]\d{4}"
+        r"|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}"
+        r"|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})"
+    )
+    found_days = re.findall(date_token, header_region, flags=re.IGNORECASE)
+    if len(found_days) < expected_days:
+        raise ValueError(
+            f"Avast page-one date header columns are missing: expected {expected_days}, found {len(found_days)}"
+        )
+    days = found_days[-expected_days:]
+    parsed_days = [parse_day(day) for day in days]
+    if len(parsed_days) != len(set(parsed_days)):
+        raise ValueError("Avast first-table date headers are duplicated")
+    if len(new_values) != len(parsed_days) + 1 or len(blood_values) != len(parsed_days) + 1:
+        raise ValueError("Avast Total values do not align exactly with dates")
+    return {
+        day: {"new_users": number(new), "blood_volume": number(blood)}
+        for day, new, blood in zip(parsed_days, new_values[:-1], blood_values[:-1])
+    }
 
 def pdf_rows(raw_pdf):
     with pdfplumber.open(io.BytesIO(raw_pdf)) as pdf:
@@ -135,26 +155,34 @@ def select_all_mail(client):
         raise RuntimeError(f"Gmail IMAP could not open mailbox: {mailbox}")
 
 
-def imap_messages(client, subject):
+def imap_messages(client, subject, sent_on):
     select_all_mail(client)
-    # X-GM-RAW needs Gmail-specific literal quoting and was rejected by the
-    # server in GitHub Actions. Standard IMAP SUBJECT search is portable;
-    # All Mail excludes spam/trash and later checks still verify sender/PDF.
-    status, data = client.uid("search", None, "SUBJECT", f'"{subject}"')
+    # Restrict the server-side search to the report date. This prevents old
+    # messages with the same subject from being fetched or parsed.
+    status, data = client.uid(
+        "search",
+        None,
+        "SENTON",
+        sent_on.strftime("%d-%b-%Y"),
+        "SUBJECT",
+        f'"{subject}"',
+    )
     if status != "OK":
         raise RuntimeError("Gmail IMAP search failed")
-    for uid in reversed(data[0].split()):
-        status, payload = client.uid("fetch", uid, "(RFC822)")
-        if status != "OK" or not payload or not isinstance(payload[0], tuple):
-            continue
+    uids = data[0].split()
+    if not uids:
+        return
+    # Gmail UIDs are monotonically increasing. Fetch only the newest matching
+    # report instead of traversing older messages from the same day.
+    status, payload = client.uid("fetch", uids[-1], "(RFC822)")
+    if status == "OK" and payload and isinstance(payload[0], tuple):
         yield email.message_from_bytes(payload[0][1])
 
-
-def source_rows(client, surface, start, end):
+def source_rows(client, surface, start, end, email_date):
     spec = SURFACES[surface]
     resolved = {}
     rejected = 0
-    for message in imap_messages(client, spec["subject"]):
+    for message in imap_messages(client, spec["subject"], email_date):
         if not verified_sender(message):
             rejected += 1
             continue
@@ -286,7 +314,11 @@ def main():
     secrets = {name: os.environ.get(name) for name in ("GMAIL_IMAP_USERNAME", "GMAIL_APP_PASSWORD", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON")}
     if not all(secrets.values()):
         raise RuntimeError("missing required GitHub Actions secret")
-    end = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    # Reports arriving after midnight Beijing time contain data through the
+    # previous day, so their email date and data end date are different.
+    end = parse_day(args.end_date) if args.end_date else today - timedelta(days=1)
+    email_date = today
     sheets = sheets_service(secrets["GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"])
     headers, existing_rows = get_sheet(sheets)
     start = parse_day(args.start_date) if args.start_date else first_missing(existing_rows, end)
@@ -294,7 +326,7 @@ def main():
         raise RuntimeError("start date is after end date")
     gmail = gmail_imap_client(secrets["GMAIL_IMAP_USERNAME"], secrets["GMAIL_APP_PASSWORD"])
     try:
-        sources = {surface: source_rows(gmail, surface, start, end) for surface in SURFACES}
+        sources = {surface: source_rows(gmail, surface, start, end, email_date) for surface in SURFACES}
     finally:
         gmail.logout()
     updates, appends, overwrites = plan_writes(headers, existing_rows, sources, args.allow_overwrite)

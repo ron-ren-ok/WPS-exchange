@@ -26,6 +26,25 @@ class AvastTests(unittest.TestCase):
             date(2026, 7, 15): {"new_users": 173, "blood_volume": 173},
         })
 
+    def test_accepts_grand_total_rows(self):
+        grand = PAGE.replace("Total 178 173 351", "Grand Total 178 173 351").replace(
+            "Total $178 $173 $351",
+            "Grand Total $178 $173 $351",
+        )
+        self.assertEqual(AVAST.parse_avast_page(grand), {
+            date(2026, 7, 14): {"new_users": 178, "blood_volume": 178},
+            date(2026, 7, 15): {"new_users": 173, "blood_volume": 173},
+        })
+
+    def test_accepts_power_bi_glyph_before_total(self):
+        decorated = PAGE.replace("Total 178 173 351", "\ue116 Total 178 173 351").replace(
+            "Total $178 $173 $351",
+            "\ue116 Total $178 $173 $351",
+        )
+        self.assertEqual(
+            AVAST.parse_avast_page(decorated)[date(2026, 7, 15)]["blood_volume"],
+            173,
+        )
     def test_rejects_reordered_totals(self):
         bad = PAGE.replace("Total 178 173 351\nTotal $178 $173 $351", "Total $178 $173 $351\nTotal 178 173 351")
         with self.assertRaisesRegex(ValueError, "immediately follow"):
@@ -37,6 +56,57 @@ class AvastTests(unittest.TestCase):
             "Country Code 2026-07-14 2026-07-15 Grand Total\nTotal $178 $173 $351",
         )
         self.assertEqual(AVAST.parse_avast_page(repeated)[date(2026, 7, 14)]["new_users"], 178)
+
+    def test_accepts_country_code_header_split_across_lines(self):
+        wrapped = PAGE.replace(
+            "Country Code 2026-07-14 2026-07-15 Grand Total",
+            "Country\nCode   2026-07-14\n2026-07-15   Grand Total",
+        )
+        self.assertEqual(AVAST.parse_avast_page(wrapped), {
+            date(2026, 7, 14): {"new_users": 178, "blood_volume": 178},
+            date(2026, 7, 15): {"new_users": 173, "blood_volume": 173},
+        })
+
+    def test_recovers_date_header_when_country_code_is_omitted(self):
+        omitted = PAGE.replace("Country Code ", "")
+        self.assertEqual(
+            AVAST.parse_avast_page(omitted)[date(2026, 7, 14)]["new_users"],
+            178,
+        )
+
+    def test_accepts_us_style_date_headers(self):
+        us_dates = PAGE.replace(
+            "2026-07-14 2026-07-15",
+            "7/14/2026 7/15/2026",
+        )
+        self.assertEqual(set(AVAST.parse_avast_page(us_dates)), {
+            date(2026, 7, 14),
+            date(2026, 7, 15),
+        })
+
+    def test_recovers_dates_without_table_labels_or_grand_total(self):
+        extracted = PAGE.replace(
+            "Country Code 2026-07-14 2026-07-15 Grand Total",
+            "Report generated 2026-07-01\n2026-07-14 2026-07-15",
+        )
+        self.assertEqual(set(AVAST.parse_avast_page(extracted)), {
+            date(2026, 7, 14),
+            date(2026, 7, 15),
+        })
+
+    def test_accepts_month_name_date_headers(self):
+        named = PAGE.replace(
+            "Country Code 2026-07-14 2026-07-15 Grand Total",
+            "14 Jul 2026 15 Jul 2026",
+        )
+        self.assertEqual(set(AVAST.parse_avast_page(named)), {
+            date(2026, 7, 14),
+            date(2026, 7, 15),
+        })
+    def test_rejects_page_without_date_header(self):
+        bad = PAGE.replace("Country Code 2026-07-14 2026-07-15 Grand Total\n", "")
+        with self.assertRaisesRegex(ValueError, "date header"):
+            AVAST.parse_avast_page(bad)
     def test_plans_append_for_new_h5_long_format_record(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
         updates, appends, overwrites = AVAST.plan_writes(
@@ -76,7 +146,7 @@ class AvastTests(unittest.TestCase):
         message.add_attachment(b"pdf", maintype="application", subtype="pdf", filename="report.pdf")
         self.assertTrue(AVAST.verified_sender(message))
         self.assertEqual(list(AVAST.attachments(message)), [b"pdf"])
-    def test_imap_search_uses_standard_quoted_subject(self):
+    def test_imap_search_is_limited_to_the_report_date_and_subject(self):
         class FakeImap:
             def __init__(self):
                 self.uid_args = None
@@ -93,9 +163,28 @@ class AvastTests(unittest.TestCase):
                 return "OK", [b""]
 
         client = FakeImap()
-        self.assertEqual(list(AVAST.imap_messages(client, "Avast report")), [])
+        self.assertEqual(list(AVAST.imap_messages(client, "Avast report", date(2026, 7, 26))), [])
         self.assertEqual(client.mailbox, ("[Gmail]/All Mail", True))
-        self.assertEqual(client.uid_args, ("search", None, "SUBJECT", '"Avast report"'))
+        self.assertEqual(client.uid_args, ("search", None, "SENTON", "26-Jul-2026", "SUBJECT", '"Avast report"'))
+    def test_imap_fetches_only_the_newest_matching_message(self):
+        class FakeImap:
+            def list(self):
+                return "OK", [b'* LIST (\\HasNoChildren \\All) "/" "[Gmail]/All Mail"']
+
+            def select(self, mailbox, readonly):
+                return "OK", [b"0"]
+
+            def uid(self, *args):
+                self.calls.append(args)
+                if args[0] == "search":
+                    return "OK", [b"41 42"]
+                return "OK", [(b"42", b"From: no-reply-powerbi@microsoft.com\n\nbody")]
+
+        client = FakeImap()
+        client.calls = []
+        messages = list(AVAST.imap_messages(client, "Avast report", date(2026, 7, 26)))
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(client.calls[-1], ("fetch", b"42", "(RFC822)"))
     def test_column_names(self):
         self.assertEqual(AVAST.col_name(0), "A")
         self.assertEqual(AVAST.col_name(25), "Z")
