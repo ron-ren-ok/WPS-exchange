@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 SOURCE_SHEET_ID = "1fHVgG5EnrSR-BXOsQxmNbIM_fk88qwTHe8u-gkxsFvw"
 SOURCE_SHEET_NAME = "每日"
+SOURCE_LAST_COLUMN = "F"
 TARGET_SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 TARGET_SHEET_NAME = "合作方新增血量"
 PARTNER = "360"
@@ -16,6 +17,7 @@ SURFACES = {
     "360-1": "换量弹窗",
     "360-2": "气泡",
     "360-3": "卸载后引导H5",
+    "360-5": "文档雷达",
 }
 
 
@@ -234,7 +236,7 @@ def main():
     ).execute().get("values", [])
     headers, existing = target_records(target_values)
     source_seed = service.spreadsheets().values().get(
-        spreadsheetId=SOURCE_SHEET_ID, range=f"'{SOURCE_SHEET_NAME}'!A1:D20", valueRenderOption="UNFORMATTED_VALUE"
+        spreadsheetId=SOURCE_SHEET_ID, range=f"'{SOURCE_SHEET_NAME}'!A1:{SOURCE_LAST_COLUMN}20", valueRenderOption="UNFORMATTED_VALUE"
     ).execute().get("values", [])
     source_first_row, source_first_day = first_source_day(source_seed)
     if requested_start and requested_start > end:
@@ -248,7 +250,7 @@ def main():
     source_end_row = source_first_row + (end - source_first_day).days
     source_rows = service.spreadsheets().values().get(
         spreadsheetId=SOURCE_SHEET_ID,
-        range=f"'{SOURCE_SHEET_NAME}'!A{source_start_row}:D{source_end_row}",
+        range=f"'{SOURCE_SHEET_NAME}'!A{source_start_row}:{SOURCE_LAST_COLUMN}{source_end_row}",
         valueRenderOption="UNFORMATTED_VALUE",
     ).execute().get("values", [])
     source = source_records([source_seed[0], *source_rows], source_start, end)
