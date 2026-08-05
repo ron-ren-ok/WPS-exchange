@@ -1,9 +1,6 @@
 name: Partner Health Alert
 
 on:
-  schedule:
-    # 05:00 Beijing time (21:00 UTC on the preceding day), every day.
-    - cron: "0 21 * * *"
   workflow_dispatch:
     inputs:
       webhook_target:
