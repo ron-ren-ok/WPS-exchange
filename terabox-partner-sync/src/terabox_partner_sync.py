@@ -11,7 +11,11 @@ SOURCE_SHEET_NAME = "WPS PC 导流 TeraBox"
 TARGET_SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 TARGET_SHEET_NAME = "合作方新增血量"
 PARTNER = "Terabox"
-SOURCE_HEADERS = ("日期", "运营位", "新增")
+SOURCE_HEADER_ALIASES = {
+    "日期": ("日期",),
+    "运营位": ("运营位",),
+    "新增": ("设备新增（uv）", "设备新增(uv)", "新增"),
+}
 TARGET_HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
 
 
@@ -70,14 +74,17 @@ def normalized_header(value):
 
 def source_layout(values, search_rows=50):
     """Find the long-table header even when the sheet starts with title or note rows."""
-    required = {normalized_header(header): header for header in SOURCE_HEADERS}
     for row_index, row in enumerate(values[:search_rows]):
         normalized = [normalized_header(value) for value in row]
-        if len(normalized) != len(set(normalized)):
-            continue
-        if all(header in normalized for header in required):
-            return row_index, {label: normalized.index(header) for header, label in required.items()}
-    raise RuntimeError("TeraBox source headers are missing in the first 50 rows")
+        positions = {}
+        for label, aliases in SOURCE_HEADER_ALIASES.items():
+            matching = [normalized_header(alias) for alias in aliases if normalized_header(alias) in normalized]
+            if len(matching) != 1:
+                break
+            positions[label] = normalized.index(matching[0])
+        if len(positions) == len(SOURCE_HEADER_ALIASES):
+            return row_index, positions
+    raise RuntimeError("TeraBox source headers are missing in the first 50 rows; expected 日期, 运营位, 设备新增（uv）")
 
 
 def source_records(values, start, end):
