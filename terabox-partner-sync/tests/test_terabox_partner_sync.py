@@ -1,6 +1,6 @@
 import importlib.util
 import unittest
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 MODULE = Path(__file__).resolve().parents[1] / "src" / "terabox_partner_sync.py"
@@ -10,12 +10,13 @@ SPEC.loader.exec_module(SYNC)
 
 
 class TeraBoxSyncTests(unittest.TestCase):
-    def test_reads_bubble_new_users_from_column_b_and_skips_summary(self):
-        values = [["日期", "气泡新增"], ["汇总", 99], ["2026-08-03", 17], ["2026-08-04", 0], ["2026-08-05", ""]]
+    def test_reads_operations_from_long_source_and_skips_summary(self):
+        values = [["日期", "运营位", "新增"], ["汇总", "", 99], ["2026-08-03", "气泡", 17], ["2026-08-04", "气泡", 0], ["2026-08-05", "气泡", ""], ["2026-08-05", "文档雷达", 6]]
         records = SYNC.source_records(values, date(2026, 8, 3), date(2026, 8, 5))
         self.assertEqual(records[(date(2026, 8, 3), "Terabox", "气泡")]["new_users"], 17)
         self.assertEqual(records[(date(2026, 8, 4), "Terabox", "气泡")]["new_users"], 0)
         self.assertNotIn((date(2026, 8, 5), "Terabox", "气泡"), records)
+        self.assertEqual(records[(date(2026, 8, 5), "Terabox", "文档雷达")]["new_users"], 6)
 
     def test_appends_new_users_without_blood_volume(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
@@ -34,14 +35,19 @@ class TeraBoxSyncTests(unittest.TestCase):
         self.assertEqual(appends, [])
         self.assertEqual(updates, [{"range": "'合作方新增血量'!D9", "values": [[17]]}])
 
-    def test_default_plan_is_incremental_and_repairs_recent_gap(self):
+    def test_new_source_operation_is_included_without_code_mapping(self):
+        end = date(2026, 8, 5)
+        source = {(date(2026, 8, 5), "Terabox", "气泡"): {"new_users": 17}, (date(2026, 8, 5), "Terabox", "新运营位"): {"new_users": 6}}
+        required = SYNC.required_source_records(["日期", "合作方", "运营位", "新增", "血量"], {}, source, date(2026, 1, 1), end)
+        self.assertEqual(required, source)
+
+    def test_normal_run_is_incremental_and_repairs_recent_source_gap(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
         end = date(2026, 8, 5)
-        existing = {(date(2026, 8, 4), "Terabox", "气泡"): {"row": 5, "values": [46238, "Terabox", "气泡", 17, ""]}}
-        missing = SYNC.missing_keys(headers, existing, date(2026, 1, 1), end)
-        self.assertIn((date(2026, 8, 5), "Terabox", "气泡"), missing)
-        self.assertIn((date(2026, 7, 23), "Terabox", "气泡"), missing)
-        self.assertNotIn((date(2026, 1, 2), "Terabox", "气泡"), missing)
+        source = {(date(2026, 7, 23), "Terabox", "气泡"): {"new_users": 10}, (date(2026, 8, 5), "Terabox", "气泡"): {"new_users": 17}}
+        existing = {(date(2026, 8, 4), "Terabox", "气泡"): {"row": 5, "values": [46238, "Terabox", "气泡", 16, ""]}}
+        required = SYNC.required_source_records(headers, existing, source, date(2026, 1, 1), end)
+        self.assertEqual(set(required), set(source))
 
 
 if __name__ == "__main__":

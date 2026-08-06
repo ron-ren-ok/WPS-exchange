@@ -1,9 +1,9 @@
-"""Incrementally sync TeraBox bubble new-user data into the long partner table."""
+"""Incrementally sync TeraBox long-format new-user data into the partner table."""
 import argparse
 import json
 import os
 import sys
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 SOURCE_SHEET_ID = "1YN0VF4zPyYeWe0LeaFmVPsEZr_YT83mDyPwX9pFeJ1c"
@@ -11,7 +11,7 @@ SOURCE_SHEET_NAME = "WPS PC 导流 TeraBox"
 TARGET_SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 TARGET_SHEET_NAME = "合作方新增血量"
 PARTNER = "Terabox"
-OPERATION = "气泡"
+SOURCE_HEADERS = ("日期", "运营位", "新增")
 TARGET_HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
 
 
@@ -65,21 +65,26 @@ def col_name(index):
 
 
 def source_records(values, start, end):
-    """Source column A is date; B is explicitly the TeraBox bubble new-user metric."""
+    """Read every reported source operation, allowing future operations without code changes."""
+    if not values or len(values[0]) != len(set(values[0])) or any(header not in values[0] for header in SOURCE_HEADERS):
+        raise RuntimeError("TeraBox source headers are missing or duplicated")
+    positions = {header: values[0].index(header) for header in SOURCE_HEADERS}
     records = {}
-    for row in values:
-        if not row or not row[0]:
+    for row in values[1:]:
+        if not row or not value_at(row, positions["日期"]):
             continue
         try:
-            day = parse_day(row[0])
+            day = parse_day(value_at(row, positions["日期"]))
         except ValueError:
-            # Header, totals, and notes are not daily records.
             continue
         if not start <= day <= end:
             continue
-        new_users = number(value_at(row, 1))
-        if new_users is not None:  # Blank means the source has not reported; zero is valid.
-            key = (day, PARTNER, OPERATION)
+        operation = str(value_at(row, positions["运营位"])).strip()
+        if not operation:
+            continue
+        new_users = number(value_at(row, positions["新增"]))
+        if new_users is not None:  # Blank means not reported; zero is valid.
+            key = (day, PARTNER, operation)
             if key in records:
                 raise RuntimeError(f"duplicate TeraBox source record: {key}")
             records[key] = {"new_users": new_users}
@@ -87,11 +92,14 @@ def source_records(values, start, end):
 
 
 def first_source_day(values):
-    for row in values:
-        if not row or not row[0]:
+    if not values or any(header not in values[0] for header in SOURCE_HEADERS):
+        raise RuntimeError("TeraBox source headers are missing")
+    date_column = values[0].index("日期")
+    for row in values[1:]:
+        if not row or not value_at(row, date_column):
             continue
         try:
-            return parse_day(row[0])
+            return parse_day(value_at(row, date_column))
         except ValueError:
             continue
     raise RuntimeError("TeraBox source first daily record was not found")
@@ -117,27 +125,26 @@ def target_records(values):
     return headers, records
 
 
-def missing_keys(headers, existing, source_first_day, end, explicit_start=None, lookback_days=14):
+def required_source_records(headers, existing, source, source_first_day, end, explicit_start=None, lookback_days=14):
+    """Keep normal runs incremental while accepting source-only operations automatically."""
     new_column = headers.index("新增")
     if explicit_start:
-        start = max(explicit_start, source_first_day)
-    else:
+        floor = max(explicit_start, source_first_day)
+        return {key: metrics for key, metrics in source.items() if key[0] >= floor}
+    recent_start = max(source_first_day, end - timedelta(days=lookback_days - 1))
+    by_operation = {}
+    for key, metrics in source.items():
+        by_operation.setdefault(key[2], []).append((key, metrics))
+    required = {}
+    for operation, records in by_operation.items():
         populated_days = [
             key[0] for key, record in existing.items()
-            if key[1] == PARTNER and key[2] == OPERATION and value_at(record, new_column) not in ("", None)
+            if key[1] == PARTNER and key[2] == operation and value_at(record, new_column) not in ("", None)
         ]
         latest = max(populated_days) if populated_days else None
-        recent_start = max(source_first_day, end - timedelta(days=lookback_days - 1))
-        start = recent_start if latest is None else min(latest + timedelta(days=1), recent_start)
-    keys = set()
-    current = start
-    while current <= end:
-        key = (current, PARTNER, OPERATION)
-        record = existing.get(key)
-        if record is None or value_at(record, new_column) in ("", None):
-            keys.add(key)
-        current += timedelta(days=1)
-    return keys
+        floor = recent_start if latest is None else min(latest + timedelta(days=1), recent_start)
+        required.update({key: metrics for key, metrics in records if key[0] >= floor})
+    return required
 
 
 def plan_writes(headers, existing, source, allow_overwrite=False):
@@ -205,39 +212,31 @@ def main():
         raise RuntimeError("start date is after end date")
     service = sheets_service(service_json)
     target_values = service.spreadsheets().values().get(
-        spreadsheetId=TARGET_SHEET_ID,
-        range=f"'{TARGET_SHEET_NAME}'!A:E",
-        valueRenderOption="UNFORMATTED_VALUE",
-        dateTimeRenderOption="SERIAL_NUMBER",
+        spreadsheetId=TARGET_SHEET_ID, range=f"'{TARGET_SHEET_NAME}'!A:E",
+        valueRenderOption="UNFORMATTED_VALUE", dateTimeRenderOption="SERIAL_NUMBER",
     ).execute().get("values", [])
     headers, existing = target_records(target_values)
     source_values = service.spreadsheets().values().get(
-        spreadsheetId=SOURCE_SHEET_ID,
-        range=f"'{SOURCE_SHEET_NAME}'!A:B",
-        valueRenderOption="UNFORMATTED_VALUE",
-        dateTimeRenderOption="SERIAL_NUMBER",
+        spreadsheetId=SOURCE_SHEET_ID, range=f"'{SOURCE_SHEET_NAME}'!A:C",
+        valueRenderOption="UNFORMATTED_VALUE", dateTimeRenderOption="SERIAL_NUMBER",
     ).execute().get("values", [])
     source_first_day = first_source_day(source_values)
-    required_keys = missing_keys(headers, existing, source_first_day, end, requested_start)
-    if not required_keys:
+    source = source_records(source_values, source_first_day, end)
+    required = required_source_records(headers, existing, source, source_first_day, end, requested_start)
+    if not required:
         print(json.dumps({"status": "already_complete", "updated_cells": 0, "appended_rows": 0}, ensure_ascii=False))
         return
-    source_start = min(key[0] for key in required_keys)
-    source = source_records(source_values, source_start, end)
-    source = {key: value for key, value in source.items() if key in required_keys}
-    unavailable = sorted(required_keys - set(source))
-    updates, appends, overwrites, skipped_conflicts = plan_writes(headers, existing, source, args.allow_overwrite)
+    source_start = min(key[0] for key in required)
+    updates, appends, overwrites, skipped_conflicts = plan_writes(headers, existing, required, args.allow_overwrite)
     if updates:
         service.spreadsheets().values().batchUpdate(
-            spreadsheetId=TARGET_SHEET_ID,
-            body={"valueInputOption": "USER_ENTERED", "data": updates},
+            spreadsheetId=TARGET_SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}
         ).execute()
     append_rows(service, headers, appends)
     print(json.dumps({
         "start": (requested_start or source_start).isoformat(), "end": end.isoformat(),
         "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites,
-        "skipped_conflicts": skipped_conflicts,
-        "unavailable_dates": [key[0].isoformat() for key in unavailable],
+        "skipped_conflicts": skipped_conflicts, "source_operations": sorted({key[2] for key in required}),
     }, ensure_ascii=False))
 
 
