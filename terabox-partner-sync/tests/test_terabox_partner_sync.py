@@ -11,12 +11,16 @@ SPEC.loader.exec_module(SYNC)
 
 class TeraBoxSyncTests(unittest.TestCase):
     def test_reads_operations_from_long_source_and_skips_summary(self):
-        values = [["日期", "运营位", "新增"], ["汇总", "", 99], ["2026-08-03", "气泡", 17], ["2026-08-04", "气泡", 0], ["2026-08-05", "气泡", ""], ["2026-08-05", "文档雷达", 6]]
+        values = [["TeraBox 每日数据"], ["更新时间：2026-08-05"], ["日期", "运营位", "新增"], ["汇总", "", 99], ["2026-08-03", "气泡", 17], ["2026-08-04", "气泡", 0], ["2026-08-05", "气泡", ""], ["2026-08-05", "文档雷达", 6]]
         records = SYNC.source_records(values, date(2026, 8, 3), date(2026, 8, 5))
         self.assertEqual(records[(date(2026, 8, 3), "Terabox", "气泡")]["new_users"], 17)
         self.assertEqual(records[(date(2026, 8, 4), "Terabox", "气泡")]["new_users"], 0)
         self.assertNotIn((date(2026, 8, 5), "Terabox", "气泡"), records)
         self.assertEqual(records[(date(2026, 8, 5), "Terabox", "文档雷达")]["new_users"], 6)
+
+    def test_rejects_missing_header_row_with_clear_error(self):
+        with self.assertRaisesRegex(RuntimeError, "first 50 rows"):
+            SYNC.source_records([["title"], ["not a table"]], date(2026, 8, 3), date(2026, 8, 5))
 
     def test_appends_new_users_without_blood_volume(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]

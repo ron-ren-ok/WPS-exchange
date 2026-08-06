@@ -64,13 +64,27 @@ def col_name(index):
         index -= 1
 
 
+def normalized_header(value):
+    return "".join(str(value).strip().lower().split())
+
+
+def source_layout(values, search_rows=50):
+    """Find the long-table header even when the sheet starts with title or note rows."""
+    required = {normalized_header(header): header for header in SOURCE_HEADERS}
+    for row_index, row in enumerate(values[:search_rows]):
+        normalized = [normalized_header(value) for value in row]
+        if len(normalized) != len(set(normalized)):
+            continue
+        if all(header in normalized for header in required):
+            return row_index, {label: normalized.index(header) for header, label in required.items()}
+    raise RuntimeError("TeraBox source headers are missing in the first 50 rows")
+
+
 def source_records(values, start, end):
     """Read every reported source operation, allowing future operations without code changes."""
-    if not values or len(values[0]) != len(set(values[0])) or any(header not in values[0] for header in SOURCE_HEADERS):
-        raise RuntimeError("TeraBox source headers are missing or duplicated")
-    positions = {header: values[0].index(header) for header in SOURCE_HEADERS}
+    header_row, positions = source_layout(values)
     records = {}
-    for row in values[1:]:
+    for row in values[header_row + 1:]:
         if not row or not value_at(row, positions["日期"]):
             continue
         try:
@@ -92,14 +106,12 @@ def source_records(values, start, end):
 
 
 def first_source_day(values):
-    if not values or any(header not in values[0] for header in SOURCE_HEADERS):
-        raise RuntimeError("TeraBox source headers are missing")
-    date_column = values[0].index("日期")
-    for row in values[1:]:
-        if not row or not value_at(row, date_column):
+    header_row, positions = source_layout(values)
+    for row in values[header_row + 1:]:
+        if not row or not value_at(row, positions["日期"]):
             continue
         try:
-            return parse_day(value_at(row, date_column))
+            return parse_day(value_at(row, positions["日期"]))
         except ValueError:
             continue
     raise RuntimeError("TeraBox source first daily record was not found")
