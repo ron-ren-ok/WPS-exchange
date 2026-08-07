@@ -23,6 +23,7 @@ PARTNER = "Winriser"
 SOURCE_TO_OPERATION = {
     "wnrwpsofc": "气泡",
     "wnrwpsofc_exchange": "换量弹窗",
+    "wnrwps_radar": "文档雷达",
 }
 
 

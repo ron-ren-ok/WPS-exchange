@@ -6,6 +6,7 @@
 
 - `wnrwpsofc` → 运营位：`气泡`
 - `wnrwpsofc_exchange` → 运营位：`换量弹窗`
+- `wnrwps_radar` → 运营位：`文档雷达`
 - 合作方：`Winriser`；新增：`Install Count`；血量：`Spend-PPI($)`
 - 主 source `WPS` 是汇总行，不写入；其他未映射子 source 也不写入。
 

@@ -23,19 +23,22 @@ class WinriserTests(unittest.TestCase):
         <tr><td>-</td><td>2026-07-14</td><td>WPS</td><td>100</td><td>50</td></tr>
         <tr><td>-</td><td>2026-07-14</td><td>wnrwpsofc</td><td>12</td><td>3.5</td></tr>
         <tr><td>-</td><td>2026-07-14</td><td>wnrwpsofc_exchange</td><td>8</td><td>4</td></tr>
+        <tr><td>-</td><td>2026-07-14</td><td>wnrwps_radar</td><td>6</td><td>2.4</td></tr>
         <tr><td>-</td><td>2026-07-14</td><td>wnrwpsofc2</td><td>80</td><td>40</td></tr>
         """
         rows = WINRISER.parse_report(html, date(2026, 7, 14))
         self.assertEqual(rows, {
             (date(2026, 7, 14), "气泡"): {"new_users": 12, "blood_volume": 3.5},
             (date(2026, 7, 14), "换量弹窗"): {"new_users": 8, "blood_volume": 4},
+            (date(2026, 7, 14), "文档雷达"): {"new_users": 6, "blood_volume": 2.4},
         })
 
-    def test_plans_append_for_bubble_and_exchange_records(self):
+    def test_plans_append_for_all_mapped_records(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
         source = {
             (date(2026, 7, 14), "气泡"): {"new_users": 12, "blood_volume": 3.5},
             (date(2026, 7, 14), "换量弹窗"): {"new_users": 8, "blood_volume": 4},
+            (date(2026, 7, 14), "文档雷达"): {"new_users": 6, "blood_volume": 2.4},
         }
         updates, appends, overwrites = WINRISER.plan_writes(headers, {}, source, False)
         self.assertEqual(updates, [])
@@ -43,6 +46,7 @@ class WinriserTests(unittest.TestCase):
         self.assertCountEqual(appends, [
             {"日期": date(2026, 7, 14), "合作方": "Winriser", "运营位": "气泡", "新增": 12, "血量": 3.5},
             {"日期": date(2026, 7, 14), "合作方": "Winriser", "运营位": "换量弹窗", "新增": 8, "血量": 4},
+            {"日期": date(2026, 7, 14), "合作方": "Winriser", "运营位": "文档雷达", "新增": 6, "血量": 2.4},
         ])
 
     def test_updates_existing_exchange_record(self):
