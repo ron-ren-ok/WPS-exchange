@@ -125,6 +125,26 @@ class AvastTests(unittest.TestCase):
             "血量": 3.5,
         }])
 
+    def test_maps_e_report_to_document_radar(self):
+        spec = AVAST.SURFACES["document_radar"]
+        self.assertEqual(spec["subject"], "Avast AV - WPS - E - Daily PBI report")
+        self.assertEqual(spec["operation"], "\u6587\u6863\u96f7\u8fbe")
+        updates, appends, overwrites = AVAST.plan_writes(
+            ["\u65e5\u671f", "\u5408\u4f5c\u65b9", "\u8fd0\u8425\u4f4d", "\u65b0\u589e", "\u8840\u91cf"],
+            {},
+            {"document_radar": {date(2026, 8, 16): {"new_users": 25, "blood_volume": 8.5}}},
+            allow_overwrite=False,
+        )
+        self.assertEqual(updates, [])
+        self.assertEqual(overwrites, [])
+        self.assertEqual(appends, [{
+            "\u65e5\u671f": date(2026, 8, 16),
+            "\u5408\u4f5c\u65b9": "Avast",
+            "\u8fd0\u8425\u4f4d": "\u6587\u6863\u96f7\u8fbe",
+            "\u65b0\u589e": 25,
+            "\u8840\u91cf": 8.5,
+        }])
+
     def test_updates_existing_long_format_record(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
         key = (date(2026, 7, 21), "Avast", "气泡")

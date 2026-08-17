@@ -5,6 +5,7 @@
 | 邮件主题 | 合作方 | 运营位 |
 | --- | --- | --- |
 | Avast AV - WPS - Daily PBI report | Avast | 换量弹窗 |
+| Avast AV - WPS - E - Daily PBI report | Avast | &#25991;&#26723;&#38647;&#36798; |
 | Avast AV - WPS - Toast - Daily PBI report | Avast | 气泡 |
 | Avast One - WPS - C - Daily Report PBI | Avast | 卸载后引导H5 |
 

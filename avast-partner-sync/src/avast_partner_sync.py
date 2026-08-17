@@ -23,6 +23,7 @@ SURFACES = {
     "popup": {"subject": "Avast AV - WPS - Daily PBI report", "operation": "换量弹窗", "optional": False},
     "bubble": {"subject": "Avast AV - WPS - Toast - Daily PBI report", "operation": "气泡", "optional": False},
     "uninstall_h5": {"subject": "Avast One - WPS - C - Daily Report PBI", "operation": "卸载后引导H5", "optional": True},
+    "document_radar": {"subject": "Avast AV - WPS - E - Daily PBI report", "operation": "\u6587\u6863\u96f7\u8fbe", "optional": True},
 }
 
 
