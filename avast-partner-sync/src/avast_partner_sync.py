@@ -245,13 +245,6 @@ def get_sheet(service):
     return headers, rows
 
 
-def first_missing(rows, cutoff, wanted_operation):
-    days = sorted(day for day, partner, operation in rows if partner == PARTNER and operation == wanted_operation and day <= cutoff)
-    if not days:
-        return None
-    expected = {days[0] + timedelta(days=index) for index in range((cutoff - days[0]).days + 1)}
-    missing = expected - set(days)
-    return min(missing) if missing else cutoff
 
 
 def plan_writes(headers, existing_rows, sources, allow_overwrite):
@@ -321,16 +314,12 @@ def main():
     explicit_start = parse_day(args.start_date) if args.start_date else None
     if explicit_start is not None and explicit_start > end:
         raise RuntimeError("start date is after end date")
-    surface_starts = {
-        surface: explicit_start if explicit_start is not None else first_missing(existing_rows, end, spec["operation"])
-        for surface, spec in SURFACES.items()
-    }
     gmail = gmail_imap_client(secrets["GMAIL_IMAP_USERNAME"], secrets["GMAIL_APP_PASSWORD"])
     try:
-        sources = {surface: source_rows(gmail, surface, surface_starts[surface], end, email_date) for surface in SURFACES}
+        sources = {surface: source_rows(gmail, surface, explicit_start, end, email_date) for surface in SURFACES}
     finally:
         gmail.logout()
-    start_candidates = [day for day in surface_starts.values() if day is not None]
+    start_candidates = [explicit_start] if explicit_start is not None else []
     start_candidates.extend(day for source in sources.values() for day in source)
     start = min(start_candidates) if start_candidates else end
     updates, appends, overwrites = plan_writes(headers, existing_rows, sources, args.allow_overwrite)

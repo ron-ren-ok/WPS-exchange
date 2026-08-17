@@ -175,14 +175,6 @@ class AvastTests(unittest.TestCase):
         self.assertEqual(all_rows, reports)
         self.assertEqual(set(explicit_rows), {date(2026, 8, 15)})
 
-    def test_first_missing_is_scoped_to_one_surface(self):
-        operation = "\u6587\u6863\u96f7\u8fbe"
-        existing = {(date(2026, 8, 14), "Avast", operation): {"row": 2, "values": []}}
-        self.assertIsNone(AVAST.first_missing({}, date(2026, 8, 16), operation))
-        self.assertEqual(
-            AVAST.first_missing(existing, date(2026, 8, 16), operation),
-            date(2026, 8, 15),
-        )
 
     def test_updates_existing_long_format_record(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]

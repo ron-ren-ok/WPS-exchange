@@ -11,7 +11,7 @@
 
 Missing report emails are logged as `unavailable` and do not block the synchronization of other Avast surfaces.
 
-For a new surface with no existing rows, the newest PDF's full date range is accepted; an explicit `--start-date` still limits the range.
+Automatic runs accept the newest PDF's full date range for every surface; an explicit `--start-date` still limits the range.
 
 长表使用「日期、合作方、运营位、新增、血量」五个字段。同步器以日期 + 合作方 + 运营位定位记录：已有记录更新新增和血量；不存在则追加一行。第三类卸载后引导H5邮件不存在时会跳过，不会导致任务失败。
 
