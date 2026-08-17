@@ -189,9 +189,10 @@ def source_rows(client, surface, start, end, email_date):
             continue
         for raw_pdf in attachments(message):
             for day, metrics in pdf_rows(raw_pdf).items():
-                if start <= day <= end and day not in resolved:
+                if (start is None or start <= day) and day <= end and day not in resolved:
                     resolved[day] = metrics
-    unavailable = [start + timedelta(days=i) for i in range((end - start).days + 1) if start + timedelta(days=i) not in resolved]
+    status_start = start or (min(resolved) if resolved else end)
+    unavailable = [status_start + timedelta(days=i) for i in range((end - status_start).days + 1) if status_start + timedelta(days=i) not in resolved]
     print(json.dumps({"surface": surface, "status": "available" if resolved else "unavailable", "available_days": len(resolved), "unavailable_days": [d.isoformat() for d in unavailable], "rejected_messages": rejected}, ensure_ascii=False))
     return resolved
 
@@ -244,16 +245,13 @@ def get_sheet(service):
     return headers, rows
 
 
-def first_missing(rows, cutoff):
-    candidates = []
-    for spec in SURFACES.values():
-        days = sorted(day for day, partner, operation in rows if partner == PARTNER and operation == spec["operation"] and day <= cutoff)
-        if not days:
-            continue
-        expected = {days[0] + timedelta(days=index) for index in range((cutoff - days[0]).days + 1)}
-        missing = expected - set(days)
-        candidates.append(min(missing) if missing else cutoff)
-    return min(candidates) if candidates else cutoff
+def first_missing(rows, cutoff, wanted_operation):
+    days = sorted(day for day, partner, operation in rows if partner == PARTNER and operation == wanted_operation and day <= cutoff)
+    if not days:
+        return None
+    expected = {days[0] + timedelta(days=index) for index in range((cutoff - days[0]).days + 1)}
+    missing = expected - set(days)
+    return min(missing) if missing else cutoff
 
 
 def plan_writes(headers, existing_rows, sources, allow_overwrite):
@@ -320,14 +318,21 @@ def main():
     email_date = today
     sheets = sheets_service(secrets["GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"])
     headers, existing_rows = get_sheet(sheets)
-    start = parse_day(args.start_date) if args.start_date else first_missing(existing_rows, end)
-    if start > end:
+    explicit_start = parse_day(args.start_date) if args.start_date else None
+    if explicit_start is not None and explicit_start > end:
         raise RuntimeError("start date is after end date")
+    surface_starts = {
+        surface: explicit_start if explicit_start is not None else first_missing(existing_rows, end, spec["operation"])
+        for surface, spec in SURFACES.items()
+    }
     gmail = gmail_imap_client(secrets["GMAIL_IMAP_USERNAME"], secrets["GMAIL_APP_PASSWORD"])
     try:
-        sources = {surface: source_rows(gmail, surface, start, end, email_date) for surface in SURFACES}
+        sources = {surface: source_rows(gmail, surface, surface_starts[surface], end, email_date) for surface in SURFACES}
     finally:
         gmail.logout()
+    start_candidates = [day for day in surface_starts.values() if day is not None]
+    start_candidates.extend(day for source in sources.values() for day in source)
+    start = min(start_candidates) if start_candidates else end
     updates, appends, overwrites = plan_writes(headers, existing_rows, sources, args.allow_overwrite)
     if updates:
         sheets.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()

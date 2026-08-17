@@ -155,6 +155,35 @@ class AvastTests(unittest.TestCase):
             None, AVAST.SURFACES["popup"]["subject"], requested_day
         )
 
+    def test_new_surface_accepts_all_pdf_days_without_lower_bound(self):
+        reports = {
+            date(2026, 8, 14): {"new_users": 401, "blood_volume": 153},
+            date(2026, 8, 15): {"new_users": 328, "blood_volume": 103},
+        }
+        with (
+            patch.object(AVAST, "imap_messages", return_value=[object()]),
+            patch.object(AVAST, "verified_sender", return_value=True),
+            patch.object(AVAST, "attachments", return_value=[b"pdf"]),
+            patch.object(AVAST, "pdf_rows", return_value=reports),
+        ):
+            all_rows = AVAST.source_rows(
+                None, "document_radar", None, date(2026, 8, 16), date(2026, 8, 17)
+            )
+            explicit_rows = AVAST.source_rows(
+                None, "document_radar", date(2026, 8, 15), date(2026, 8, 16), date(2026, 8, 17)
+            )
+        self.assertEqual(all_rows, reports)
+        self.assertEqual(set(explicit_rows), {date(2026, 8, 15)})
+
+    def test_first_missing_is_scoped_to_one_surface(self):
+        operation = "\u6587\u6863\u96f7\u8fbe"
+        existing = {(date(2026, 8, 14), "Avast", operation): {"row": 2, "values": []}}
+        self.assertIsNone(AVAST.first_missing({}, date(2026, 8, 16), operation))
+        self.assertEqual(
+            AVAST.first_missing(existing, date(2026, 8, 16), operation),
+            date(2026, 8, 15),
+        )
+
     def test_updates_existing_long_format_record(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
         key = (date(2026, 7, 21), "Avast", "气泡")
