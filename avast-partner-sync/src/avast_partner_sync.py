@@ -191,8 +191,6 @@ def source_rows(client, surface, start, end, email_date):
             for day, metrics in pdf_rows(raw_pdf).items():
                 if start <= day <= end and day not in resolved:
                     resolved[day] = metrics
-    if not resolved and not spec["optional"]:
-        raise RuntimeError(f"no verified {surface} Avast PDF rows in the requested date range")
     unavailable = [start + timedelta(days=i) for i in range((end - start).days + 1) if start + timedelta(days=i) not in resolved]
     print(json.dumps({"surface": surface, "status": "available" if resolved else "unavailable", "available_days": len(resolved), "unavailable_days": [d.isoformat() for d in unavailable], "rejected_messages": rejected}, ensure_ascii=False))
     return resolved

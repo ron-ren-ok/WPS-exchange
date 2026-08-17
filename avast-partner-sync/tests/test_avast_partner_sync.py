@@ -3,6 +3,7 @@ import unittest
 from email.message import EmailMessage
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 MODULE = Path(__file__).resolve().parents[1] / "src" / "avast_partner_sync.py"
 SPEC = importlib.util.spec_from_file_location("avast", MODULE)
@@ -144,6 +145,15 @@ class AvastTests(unittest.TestCase):
             "\u65b0\u589e": 25,
             "\u8840\u91cf": 8.5,
         }])
+
+    def test_missing_required_surface_does_not_block_other_surfaces(self):
+        requested_day = date(2026, 8, 16)
+        with patch.object(AVAST, "imap_messages", return_value=[]) as messages:
+            rows = AVAST.source_rows(None, "popup", requested_day, requested_day, requested_day)
+        self.assertEqual(rows, {})
+        messages.assert_called_once_with(
+            None, AVAST.SURFACES["popup"]["subject"], requested_day
+        )
 
     def test_updates_existing_long_format_record(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
