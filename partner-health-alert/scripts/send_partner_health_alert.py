@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Send a WPS alert only for data anomalies or red partner-health alerts."""
+"""Prepare a WPS webhook card for partner health data anomalies and alerts."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -15,11 +17,50 @@ import google.auth.transport.requests
 from google.oauth2 import service_account
 
 
-SPREADSHEET_ID = "1CXEdn4HWqRRgMD0gjm0sj8aqdpMwZFi4JHT3j3-Nn7Q"
-SHEET_NAME = "数据总览"
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=1388813723"
+SPREADSHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
+SHEET_NAME = "数据解压"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=198957158"
+DATA_RANGE = f"{SHEET_NAME}!P:Y"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 ERROR_PREFIXES = ("#REF!", "#DIV/0!", "#VALUE!", "#N/A", "#NAME?", "#NUM!", "#ERROR!")
+
+
+@dataclass(frozen=True)
+class MetricRule:
+    key: str
+    label: str
+    header: str
+    absolute_threshold: float
+    relative_threshold: float
+    mature_age_days: int
+    percent: bool
+
+
+@dataclass(frozen=True)
+class DataRow:
+    data_date: date
+    partner: str
+    values: dict[str, float | None]
+
+
+@dataclass(frozen=True)
+class Alert:
+    partner: str
+    metric: str
+    direction: str
+    current_date: date
+    baseline_date: date
+    current: float
+    baseline: float
+    difference: float
+    relative_change: float
+
+
+RULES = (
+    MetricRule("new_users", "新增", "新增设备数", 50, 0.20, 1, False),
+    MetricRule("d1", "次日留存", "次日留存率", 0.03, 0.15, 2, True),
+    MetricRule("uninstall", "卸载率", "当日卸载率", 0.03, 0.30, 1, True),
+)
 
 
 def required(name: str) -> str:
@@ -48,11 +89,28 @@ def cell_date(row: list[dict], index: int) -> date | None:
     return None
 
 
-def request_rows(session: google.auth.transport.requests.AuthorizedSession, ranges: list[str]) -> list[list[list[dict]]]:
+def cell_number(row: list[dict], index: int) -> float | None:
+    if len(row) <= index:
+        return None
+    numeric = row[index].get("effectiveValue", {}).get("numberValue")
+    if numeric is not None:
+        return float(numeric)
+    text = cell_text(row, index)
+    if not text or text.startswith(ERROR_PREFIXES):
+        return None
+    try:
+        if text.endswith("%"):
+            return float(text[:-1].replace(",", "")) / 100
+        return float(text.replace(",", ""))
+    except ValueError:
+        return None
+
+
+def request_rows(session: google.auth.transport.requests.AuthorizedSession) -> list[list[dict]]:
     response = session.get(
         f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}",
         params={
-            "ranges": ranges,
+            "ranges": [DATA_RANGE],
             "includeGridData": "true",
             "fields": "sheets(data(rowData(values(formattedValue,effectiveValue))))",
         },
@@ -60,120 +118,209 @@ def request_rows(session: google.auth.transport.requests.AuthorizedSession, rang
     )
     response.raise_for_status()
     grids = [grid for sheet in response.json().get("sheets", []) for grid in sheet.get("data", [])]
-    if len(grids) != len(ranges):
-        raise RuntimeError(f"Google Sheets returned {len(grids)} ranges, expected {len(ranges)}.")
-    return [[row.get("values", []) for row in grid.get("rowData", [])] for grid in grids]
+    if len(grids) != 1:
+        raise RuntimeError(f"Google Sheets returned {len(grids)} ranges, expected 1.")
+    return [row.get("values", []) for row in grids[0].get("rowData", [])]
 
 
-def read_overview() -> tuple[list[list[dict]], list[list[dict]]]:
+def read_data() -> list[list[dict]]:
     info = json.loads(required("GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"))
     credentials = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     session = google.auth.transport.requests.AuthorizedSession(credentials)
-    return tuple(request_rows(session, [f"{SHEET_NAME}!A1:N34", f"{SHEET_NAME}!P1:Q10"]))
+    return request_rows(session)
 
 
-def formula_errors(market_rows: list[list[dict]]) -> list[str]:
-    metrics = []
-    for row in market_rows:
-        metric, value = cell_text(row, 0), cell_text(row, 1)
-        if metric and value.startswith(ERROR_PREFIXES):
-            metrics.append(metric)
-    return metrics
+def column_index(headers: list[str], name: str) -> int:
+    try:
+        return headers.index(name)
+    except ValueError as exc:
+        raise RuntimeError(f"数据解压缺少表头：{name}") from exc
 
 
-def data_anomalies(overview_rows: list[list[dict]], market_rows: list[list[dict]]) -> tuple[str, list[str]]:
-    latest_text = cell_text(overview_rows[1], 1) if len(overview_rows) > 1 else ""
-    latest_date = cell_date(overview_rows[1], 1) if len(overview_rows) > 1 else None
-    anomalies = []
-    if latest_date is None:
-        anomalies.append("数据最新日期为空或格式无法识别")
-    else:
-        age = (datetime.now(ZoneInfo("Asia/Shanghai")).date() - latest_date).days
-        if age > 1:
-            anomalies.append(f"数据最新日期滞后 {age} 天")
-    broken_metrics = formula_errors(market_rows)
-    if broken_metrics:
-        anomalies.append(f"大盘指标公式错误：{'、'.join(broken_metrics)}")
-    return latest_text or "未知", anomalies
-
-
-def column_index(headers: list[str], name: str, start: int = 0) -> int:
-    for index in range(start, len(headers)):
-        if headers[index] == name:
-            return index
-    raise RuntimeError(f"数据总览缺少表头：{name}")
-
-
-def triggered_partners(overview_rows: list[list[dict]]) -> list[dict[str, str]]:
-    if len(overview_rows) < 5:
-        raise RuntimeError("数据总览缺少合作方预警明细区。")
-    headers = [cell_text(overview_rows[3], index) for index in range(len(overview_rows[3]))]
+def parse_rows(sheet_rows: list[list[dict]]) -> tuple[list[DataRow], list[tuple[date, str]]]:
+    if not sheet_rows:
+        raise RuntimeError("数据解压 P:Y 没有返回任何数据。")
+    headers = [cell_text(sheet_rows[0], index) for index in range(len(sheet_rows[0]))]
     columns = {
-        "name": column_index(headers, "合作方"),
-        "new_users": column_index(headers, "昨日新增"),
-        "d1": column_index(headers, "次留"),
-        "d7": column_index(headers, "7留"),
-        "uninstall": column_index(headers, "昨日卸载率"),
-        "d1_baseline": column_index(headers, "次留较近4个同星期"),
-        "d7_baseline": column_index(headers, "7留较近4个同星期"),
-        "uninstall_baseline": column_index(headers, "卸载较近4个同星期"),
-        "level": column_index(headers, "预警等级"),
-        "reason": column_index(headers, "预警原因"),
-        "data_reason": column_index(headers, "数据异常原因"),
+        "date": column_index(headers, "日期"),
+        "partner": column_index(headers, "合作方"),
+        **{rule.key: column_index(headers, rule.header) for rule in RULES},
     }
-    columns["d1_market"] = column_index(headers, "较大盘", columns["d1"] + 1)
-    columns["d7_market"] = column_index(headers, "较大盘", columns["d7"] + 1)
-    columns["uninstall_market"] = column_index(headers, "较大盘", columns["uninstall"] + 1)
-    partners = []
-    for row in overview_rows[4:]:
-        level = cell_text(row, columns["level"])
-        if not cell_text(row, columns["name"]) or level not in {"数据异常", "红色预警"}:
+    parsed: list[DataRow] = []
+    issues: list[tuple[date, str]] = []
+    for row in sheet_rows[1:]:
+        data_date = cell_date(row, columns["date"])
+        partner = cell_text(row, columns["partner"])
+        if not data_date and not partner:
             continue
-        partners.append({key: cell_text(row, index) for key, index in columns.items()})
-    return partners
+        if data_date is None or not partner:
+            continue
+        values: dict[str, float | None] = {}
+        for rule in RULES:
+            text = cell_text(row, columns[rule.key])
+            if text.startswith(ERROR_PREFIXES):
+                issues.append((data_date, f"{data_date} {partner} {rule.label}公式错误：{text}"))
+            values[rule.key] = cell_number(row, columns[rule.key])
+        parsed.append(DataRow(data_date, partner, values))
+    return parsed, list(dict.fromkeys(issues))
 
 
-def partner_block(partner: dict[str, str], anomaly_reason: str) -> str:
-    data_reason = partner.get("data_reason") or anomaly_reason
-    return "\n".join([
-        f"## {partner['name']}：{partner['level']} | {partner['reason'] or '未填写预警原因'}",
-        f"- 昨日新增：{partner['new_users'] or '—'}",
-        f"- 次留：{partner['d1'] or '—'}（较大盘 {partner['d1_market'] or '—'}；较近4个同星期 {partner['d1_baseline'] or '—'}）",
-        f"- 7留：{partner['d7'] or '—'}（较大盘 {partner['d7_market'] or '—'}；较近4个同星期 {partner['d7_baseline'] or '—'}）",
-        f"- 昨日卸载率：{partner['uninstall'] or '—'}（较大盘 {partner['uninstall_market'] or '—'}；较近4个同星期 {partner['uninstall_baseline'] or '—'}）",
-        f"- 数据异常原因：{data_reason}",
+def relevant_dates(today: date) -> set[date]:
+    dates: set[date] = set()
+    for rule in RULES:
+        current = today - timedelta(days=rule.mature_age_days)
+        dates.update((current, current - timedelta(days=1), current - timedelta(days=7), current - timedelta(days=8)))
+    return dates
+
+
+def relative_change(current: float, baseline: float) -> float:
+    if baseline == 0:
+        return 0.0 if current == 0 else math.copysign(math.inf, current - baseline)
+    return (current - baseline) / baseline
+
+
+def alert_direction(current: float, baseline: float, rule: MetricRule) -> str | None:
+    difference = current - baseline
+    relative = relative_change(current, baseline)
+    if abs(difference) < rule.absolute_threshold or abs(relative) < rule.relative_threshold:
+        return None
+    return "上涨" if difference > 0 else "下跌"
+
+
+def format_value(value: float, percent: bool) -> str:
+    return f"{value:.1%}" if percent else f"{value:,.0f}"
+
+
+def format_difference(value: float, percent: bool) -> str:
+    sign = "+" if value > 0 else ""
+    return f"{sign}{value * 100:.1f}个百分点" if percent else f"{sign}{value:,.0f}"
+
+
+def format_relative(value: float) -> str:
+    if math.isinf(value):
+        return "+∞" if value > 0 else "-∞"
+    sign = "+" if value > 0 else ""
+    return f"{sign}{value:.1%}"
+
+
+def analyze(rows: list[DataRow], today: date) -> tuple[dict[str, date], list[Alert], list[str]]:
+    index = {(row.data_date, row.partner): row for row in rows}
+    latest_dates: dict[str, date] = {}
+    alerts: list[Alert] = []
+    anomalies: list[str] = []
+
+    for rule in RULES:
+        available_dates = [row.data_date for row in rows if row.values[rule.key] is not None]
+        if not available_dates:
+            anomalies.append(f"{rule.label}没有有效数据")
+            continue
+        current_date = today - timedelta(days=rule.mature_age_days)
+        if current_date not in available_dates:
+            latest_date = max(available_dates)
+            latest_dates[rule.key] = latest_date
+            anomalies.append(f"{rule.label}缺少应有日期 {current_date} 的完整数据；最新有效日期 {latest_date}")
+            continue
+        latest_dates[rule.key] = current_date
+
+        baseline_date = current_date - timedelta(days=7)
+        previous_date = current_date - timedelta(days=1)
+        previous_baseline_date = current_date - timedelta(days=8)
+        current_partners = {
+            row.partner for row in rows
+            if row.data_date == current_date and row.values[rule.key] is not None
+        }
+        expected_partners = {
+            row.partner for row in rows
+            if row.data_date in {previous_date, baseline_date} and row.values[rule.key] is not None
+        }
+        missing_partners = sorted(expected_partners - current_partners)
+        if missing_partners:
+            anomalies.append(f"{current_date} {rule.label}缺少合作方数据：{'、'.join(missing_partners)}")
+
+        comparable = 0
+        states: dict[str, str | None] = {}
+        candidates: list[Alert] = []
+        for partner in sorted(current_partners):
+            row = index[(current_date, partner)]
+            baseline_row = index.get((baseline_date, partner))
+            baseline = baseline_row.values[rule.key] if baseline_row else None
+            if baseline is None:
+                continue
+            comparable += 1
+            current = row.values[rule.key]
+            assert current is not None
+            direction = alert_direction(current, baseline, rule)
+            states[partner] = direction
+            if direction is None:
+                continue
+
+            previous_row = index.get((previous_date, partner))
+            previous_baseline_row = index.get((previous_baseline_date, partner))
+            previous_direction = None
+            if previous_row and previous_baseline_row:
+                previous_current = previous_row.values[rule.key]
+                previous_baseline = previous_baseline_row.values[rule.key]
+                if previous_current is not None and previous_baseline is not None:
+                    previous_direction = alert_direction(previous_current, previous_baseline, rule)
+            if previous_direction == direction:
+                continue
+            candidates.append(Alert(
+                partner=partner,
+                metric=rule.key,
+                direction=direction,
+                current_date=current_date,
+                baseline_date=baseline_date,
+                current=current,
+                baseline=baseline,
+                difference=current - baseline,
+                relative_change=relative_change(current, baseline),
+            ))
+
+        for direction in ("上涨", "下跌"):
+            affected = sum(state == direction for state in states.values())
+            if comparable >= 2 and affected > comparable / 2:
+                anomalies.append(f"{current_date} {rule.label}：{affected}/{comparable} 个可比较合作方同时异常{direction}")
+                candidates = []
+                break
+        alerts.extend(candidates)
+
+    return latest_dates, alerts, anomalies
+
+
+def alert_block(alert: Alert) -> str:
+    rule = next(rule for rule in RULES if rule.key == alert.metric)
+    return "\n\n".join([
+        f"## {alert.partner}｜{rule.label}异常{alert.direction}",
+        f"- 当前（{alert.current_date}）：{format_value(alert.current, rule.percent)}",
+        f"- 上周同日（{alert.baseline_date}）：{format_value(alert.baseline, rule.percent)}",
+        f"- 变化：{format_difference(alert.difference, rule.percent)}，相对变化 {format_relative(alert.relative_change)}",
     ])
 
 
-def alert_markdown(data_date: str, partners: list[dict[str, str]], anomalies: list[str]) -> str:
-    anomaly_reason = "；".join(anomalies) if anomalies else "无"
-    blocks = ["# 🚨 三方换量用户健康度预警", f"数据日期：{data_date}", ""]
-    if partners:
-        blocks.extend(partner_block(partner, anomaly_reason) for partner in partners)
-    else:
-        blocks.extend([
-            "## 数据总览：数据异常 | 未发现红色预警",
-            "- 昨日新增：—",
-            "- 次留：—（较大盘 —；较近4个同星期 —）",
-            "- 7留：—（较大盘 —；较近4个同星期 —）",
-            "- 昨日卸载率：—（较大盘 —；较近4个同星期 —）",
-            f"- 数据异常原因：{anomaly_reason}",
-        ])
-    return "\n\n".join(blocks) + f"\n\n[查看数据总览]({SHEET_URL})"
+def alert_markdown(latest_dates: dict[str, date], alerts: list[Alert], anomalies: list[str]) -> str:
+    date_parts = [f"{rule.label} {latest_dates[rule.key]}" for rule in RULES if rule.key in latest_dates]
+    blocks = ["# 三方换量合作方健康告警", f"数据日期：{'；'.join(date_parts) or '未知'}"]
+    if anomalies:
+        blocks.append("\n\n".join(["## 数据异常", *(f"- {item}" for item in anomalies)]))
+    blocks.extend(alert_block(alert) for alert in alerts)
+    blocks.append(f"[查看数据解压]({SHEET_URL})")
+    return "\n\n".join(blocks)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Prepare a WPS partner-health alert only when it is triggered.")
+    parser = argparse.ArgumentParser(description="Prepare a WPS partner-health alert when an anomaly starts.")
     parser.add_argument("--output", required=True, help="UTF-8 alert file path; not created when no alert is triggered")
+    parser.add_argument("--today", help="Override Asia/Shanghai date for replay/testing (YYYY-MM-DD)")
     args = parser.parse_args()
-    overview_rows, market_rows = read_overview()
-    data_date, anomalies = data_anomalies(overview_rows, market_rows)
-    partners = triggered_partners(overview_rows)
-    if not partners and not anomalies:
-        print("No data anomaly or red alert. Alert file not created.")
+    today = date.fromisoformat(args.today) if args.today else datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    rows, parse_issues = parse_rows(read_data())
+    latest_dates, alerts, anomalies = analyze(rows, today)
+    anomalies = [message for issue_date, message in parse_issues if issue_date in relevant_dates(today)] + anomalies
+    if not alerts and not anomalies:
+        print("No data anomaly or new partner alert. Alert file not created.")
         return
-    Path(args.output).write_text(alert_markdown(data_date, partners, anomalies), encoding="utf-8")
-    print(f"Partner-health alert prepared: {len(partners)} triggered partner(s), {len(anomalies)} global data anomaly/anomalies.")
+    Path(args.output).write_text(alert_markdown(latest_dates, alerts, anomalies), encoding="utf-8")
+    print(f"Partner-health alert prepared: {len(alerts)} alert(s), {len(anomalies)} data anomaly/anomalies.")
 
 
 if __name__ == "__main__":

@@ -1,12 +1,14 @@
 name: Partner Health Alert
 
 on:
+  schedule:
+    - cron: "0 1 * * *"
   workflow_dispatch:
     inputs:
       webhook_target:
-        description: "Webhook target (production is the default)"
+        description: "Webhook target (test is the manual default)"
         required: true
-        default: production
+        default: test
         type: choice
         options:
           - test
@@ -35,6 +37,8 @@ jobs:
           cache-dependency-path: partner-health-alert/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Run partner health alert tests
+        run: python -m unittest discover -s tests -v
       - name: Prepare partner health alert when needed
         env:
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
@@ -48,7 +52,7 @@ jobs:
         run: |
           $alertPath = "$env:RUNNER_TEMP/partner-health-alert.md"
           if (-not (Test-Path -LiteralPath $alertPath)) {
-            Write-Output 'No data anomaly or red alert. Webhook not called.'
+            Write-Output 'No data anomaly or new partner alert. Webhook not called.'
             exit 0
           }
           $message = Get-Content -LiteralPath $alertPath -Raw -Encoding utf8
