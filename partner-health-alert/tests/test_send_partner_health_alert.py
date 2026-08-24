@@ -119,7 +119,7 @@ class PartnerHealthAlertTests(unittest.TestCase):
         result = MODULE.alert_markdown({"d1": date(2026, 8, 22)}, [alert], [])
         self.assertIn("\n\n- 当前", result)
         self.assertIn("\n\n- 上周同日", result)
-        self.assertIn("\n\n- 变化", result)
+        self.assertIn("\n\n- 变化：绝对值 -5.0%；环比 -25.0%", result)
         self.assertIn("\n\n- 近14天趋势：", result)
         self.assertNotIn("\n- 当前", result.replace("\n\n- 当前", ""))
 

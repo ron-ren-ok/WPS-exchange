@@ -195,7 +195,7 @@ def format_value(value: float, percent: bool) -> str:
 
 def format_difference(value: float, percent: bool) -> str:
     sign = "+" if value > 0 else ""
-    return f"{sign}{value * 100:.1f}个百分点" if percent else f"{sign}{value:,.0f}"
+    return f"{sign}{value:.1%}" if percent else f"{sign}{value:,.0f}"
 
 
 def format_relative(value: float) -> str:
@@ -320,7 +320,7 @@ def alert_block(alert: Alert) -> str:
         f"## {alert.partner}｜{rule.label}异常{alert.direction}",
         f"- 当前（{alert.current_date}）：{format_value(alert.current, rule.percent)}",
         f"- 上周同日（{alert.baseline_date}）：{format_value(alert.baseline, rule.percent)}",
-        f"- 变化：{format_relative(alert.relative_change)}",
+        f"- 变化：绝对值 {format_difference(alert.difference, rule.percent)}；环比 {format_relative(alert.relative_change)}",
         f"- 近14天趋势：{alert.trend}",
     ])
 
