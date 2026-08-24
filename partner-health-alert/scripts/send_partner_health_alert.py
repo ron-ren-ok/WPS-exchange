@@ -24,7 +24,6 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=1
 DATA_RANGE = f"{SHEET_NAME}!P:Y"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 ERROR_PREFIXES = ("#REF!", "#DIV/0!", "#VALUE!", "#N/A", "#NAME?", "#NUM!", "#ERROR!")
-SPARKLINE_CHARS = "▁▂▃▄▅▆▇█"
 
 
 @dataclass(frozen=True)
@@ -206,22 +205,37 @@ def format_relative(value: float) -> str:
     return f"{sign}{value:.1%}"
 
 
-def sparkline(values: list[float | None]) -> str:
-    observed = [value for value in values if value is not None]
-    if not observed:
-        return "数据不足"
-    low, high = min(observed), max(observed)
-    if low == high:
-        return "".join("▄" if value is not None else "·" for value in values)
-    scale = len(SPARKLINE_CHARS) - 1
-    return "".join(
-        "·" if value is None else SPARKLINE_CHARS[round((value - low) / (high - low) * scale)]
-        for value in values
-    )
+def format_trend(values: list[float | None], percent: bool) -> str:
+    segments: list[str] = []
+    series: list[str] = []
+    missing = 0
+    previous: float | None = None
+
+    for value in values:
+        if value is None:
+            if series:
+                segments.append(" ".join(series))
+                series = []
+                previous = None
+            missing += 1
+            continue
+        if missing:
+            segments.append(f"缺失×{missing}")
+            missing = 0
+        if previous is not None:
+            series.append("↑" if value > previous else "↓" if value < previous else "→")
+        series.append(format_value(value, percent))
+        previous = value
+
+    if series:
+        segments.append(" ".join(series))
+    if missing:
+        segments.append(f"缺失×{missing}")
+    return " ｜ ".join(segments) if segments else "数据不足"
 
 
 def partner_trend(
-    index: dict[tuple[date, str], DataRow], partner: str, metric: str, end_date: date
+    index: dict[tuple[date, str], DataRow], partner: str, metric: str, end_date: date, percent: bool
 ) -> str:
     start_date = three_months_before(end_date)
     values: list[float | None] = []
@@ -230,7 +244,7 @@ def partner_trend(
         row = index.get((trend_date, partner))
         values.append(row.values[metric] if row else None)
         trend_date += timedelta(days=7)
-    return sparkline(values)
+    return format_trend(values, percent)
 
 
 def three_months_before(value: date) -> date:
@@ -313,7 +327,7 @@ def analyze(rows: list[DataRow], today: date) -> tuple[dict[str, date], list[Ale
                 baseline=baseline,
                 difference=current - baseline,
                 relative_change=relative_change(current, baseline),
-                trend=partner_trend(index, partner, rule.key, current_date),
+                trend=partner_trend(index, partner, rule.key, current_date, rule.percent),
             ))
 
         for direction in ("上涨", "下跌"):

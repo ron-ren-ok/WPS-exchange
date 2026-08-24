@@ -124,11 +124,9 @@ class PartnerHealthAlertTests(unittest.TestCase):
         self.assertNotIn("\n- 当前", result.replace("\n\n- 当前", ""))
 
 
-    def test_sparkline_renders_all_same_period_points(self):
-        result = MODULE.sparkline([float(value) for value in range(13)])
-        self.assertEqual(len(result), 13)
-        self.assertEqual(result[0], "▁")
-        self.assertEqual(result[-1], "█")
+    def test_format_trend_groups_missing_values_and_marks_changes(self):
+        result = MODULE.format_trend([None, None, 0.0, 0.154, 0.147], True)
+        self.assertEqual(result, "缺失×2 ｜ 0.0% ↑ 15.4% ↓ 14.7%")
 
     def test_partner_trend_uses_three_months_of_matching_weekdays(self):
         end_date = date(2026, 8, 22)
@@ -137,9 +135,9 @@ class PartnerHealthAlertTests(unittest.TestCase):
             for offset in range(0, 92, 7)
         ]
         index = {(row.data_date, row.partner): row for row in rows}
-        result = MODULE.partner_trend(index, "A", "new_users", end_date)
-        self.assertEqual(len(result), 14)
-        self.assertNotIn("·", result)
+        result = MODULE.partner_trend(index, "A", "new_users", end_date, False)
+        self.assertNotIn("缺失", result)
+        self.assertIn("↓", result)
 
     def test_partner_trend_keeps_missing_same_period_visible(self):
         end_date = date(2026, 8, 22)
@@ -148,9 +146,8 @@ class PartnerHealthAlertTests(unittest.TestCase):
             for offset in range(0, 92, 14)
         ]
         index = {(row.data_date, row.partner): row for row in rows}
-        result = MODULE.partner_trend(index, "A", "new_users", end_date)
-        self.assertEqual(len(result), 14)
-        self.assertIn("·", result)
+        result = MODULE.partner_trend(index, "A", "new_users", end_date, False)
+        self.assertIn("缺失×", result)
 
 
 if __name__ == "__main__":
