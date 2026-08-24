@@ -20,7 +20,7 @@ from google.oauth2 import service_account
 SPREADSHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 SHEET_NAME = "数据解压"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=198957158"
-DATA_RANGE = f"{SHEET_NAME}!P1:Y1000"
+DATA_RANGE = f"{SHEET_NAME}!P:Y"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 ERROR_PREFIXES = ("#REF!", "#DIV/0!", "#VALUE!", "#N/A", "#NAME?", "#NUM!", "#ERROR!")
 
@@ -32,7 +32,7 @@ class MetricRule:
     header: str
     absolute_threshold: float
     relative_threshold: float
-    max_age_days: int
+    mature_age_days: int
     percent: bool
 
 
@@ -137,7 +137,7 @@ def column_index(headers: list[str], name: str) -> int:
         raise RuntimeError(f"数据解压缺少表头：{name}") from exc
 
 
-def parse_rows(sheet_rows: list[list[dict]]) -> tuple[list[DataRow], list[str]]:
+def parse_rows(sheet_rows: list[list[dict]]) -> tuple[list[DataRow], list[tuple[date, str]]]:
     if not sheet_rows:
         raise RuntimeError("数据解压 P:Y 没有返回任何数据。")
     headers = [cell_text(sheet_rows[0], index) for index in range(len(sheet_rows[0]))]
@@ -147,23 +147,30 @@ def parse_rows(sheet_rows: list[list[dict]]) -> tuple[list[DataRow], list[str]]:
         **{rule.key: column_index(headers, rule.header) for rule in RULES},
     }
     parsed: list[DataRow] = []
-    errors: list[str] = []
+    issues: list[tuple[date, str]] = []
     for row in sheet_rows[1:]:
         data_date = cell_date(row, columns["date"])
         partner = cell_text(row, columns["partner"])
         if not data_date and not partner:
             continue
         if data_date is None or not partner:
-            errors.append("存在日期或合作方为空的记录")
             continue
         values: dict[str, float | None] = {}
         for rule in RULES:
             text = cell_text(row, columns[rule.key])
             if text.startswith(ERROR_PREFIXES):
-                errors.append(f"{data_date.isoformat()} {partner} {rule.label}公式错误：{text}")
+                issues.append((data_date, f"{data_date} {partner} {rule.label}公式错误：{text}"))
             values[rule.key] = cell_number(row, columns[rule.key])
         parsed.append(DataRow(data_date, partner, values))
-    return parsed, list(dict.fromkeys(errors))
+    return parsed, list(dict.fromkeys(issues))
+
+
+def relevant_dates(today: date) -> set[date]:
+    dates: set[date] = set()
+    for rule in RULES:
+        current = today - timedelta(days=rule.mature_age_days)
+        dates.update((current, current - timedelta(days=1), current - timedelta(days=7), current - timedelta(days=8)))
+    return dates
 
 
 def relative_change(current: float, baseline: float) -> float:
@@ -207,27 +214,35 @@ def analyze(rows: list[DataRow], today: date) -> tuple[dict[str, date], list[Ale
         if not available_dates:
             anomalies.append(f"{rule.label}没有有效数据")
             continue
-        current_date = max(available_dates)
+        current_date = today - timedelta(days=rule.mature_age_days)
+        if current_date not in available_dates:
+            latest_date = max(available_dates)
+            latest_dates[rule.key] = latest_date
+            anomalies.append(f"{rule.label}缺少应有日期 {current_date} 的完整数据；最新有效日期 {latest_date}")
+            continue
         latest_dates[rule.key] = current_date
-        age = (today - current_date).days
-        if age < 0:
-            anomalies.append(f"{rule.label}最新日期晚于北京时间当天：{current_date}")
-            continue
-        if age > rule.max_age_days:
-            anomalies.append(f"{rule.label}数据滞后 {age} 天，最新日期 {current_date}")
-            continue
 
         baseline_date = current_date - timedelta(days=7)
         previous_date = current_date - timedelta(days=1)
         previous_baseline_date = current_date - timedelta(days=8)
+        current_partners = {
+            row.partner for row in rows
+            if row.data_date == current_date and row.values[rule.key] is not None
+        }
+        expected_partners = {
+            row.partner for row in rows
+            if row.data_date in {previous_date, baseline_date} and row.values[rule.key] is not None
+        }
+        missing_partners = sorted(expected_partners - current_partners)
+        if missing_partners:
+            anomalies.append(f"{current_date} {rule.label}缺少合作方数据：{'、'.join(missing_partners)}")
+
         comparable = 0
         states: dict[str, str | None] = {}
         candidates: list[Alert] = []
-
-        for row in rows:
-            if row.data_date != current_date or row.values[rule.key] is None:
-                continue
-            baseline_row = index.get((baseline_date, row.partner))
+        for partner in sorted(current_partners):
+            row = index[(current_date, partner)]
+            baseline_row = index.get((baseline_date, partner))
             baseline = baseline_row.values[rule.key] if baseline_row else None
             if baseline is None:
                 continue
@@ -235,12 +250,12 @@ def analyze(rows: list[DataRow], today: date) -> tuple[dict[str, date], list[Ale
             current = row.values[rule.key]
             assert current is not None
             direction = alert_direction(current, baseline, rule)
-            states[row.partner] = direction
+            states[partner] = direction
             if direction is None:
                 continue
 
-            previous_row = index.get((previous_date, row.partner))
-            previous_baseline_row = index.get((previous_baseline_date, row.partner))
+            previous_row = index.get((previous_date, partner))
+            previous_baseline_row = index.get((previous_baseline_date, partner))
             previous_direction = None
             if previous_row and previous_baseline_row:
                 previous_current = previous_row.values[rule.key]
@@ -250,7 +265,7 @@ def analyze(rows: list[DataRow], today: date) -> tuple[dict[str, date], list[Ale
             if previous_direction == direction:
                 continue
             candidates.append(Alert(
-                partner=row.partner,
+                partner=partner,
                 metric=rule.key,
                 direction=direction,
                 current_date=current_date,
@@ -264,9 +279,7 @@ def analyze(rows: list[DataRow], today: date) -> tuple[dict[str, date], list[Ale
         for direction in ("上涨", "下跌"):
             affected = sum(state == direction for state in states.values())
             if comparable >= 2 and affected > comparable / 2:
-                anomalies.append(
-                    f"{current_date} {rule.label}：{affected}/{comparable} 个可比较合作方同时异常{direction}"
-                )
+                anomalies.append(f"{current_date} {rule.label}：{affected}/{comparable} 个可比较合作方同时异常{direction}")
                 candidates = []
                 break
         alerts.extend(candidates)
@@ -285,10 +298,7 @@ def alert_block(alert: Alert) -> str:
 
 
 def alert_markdown(latest_dates: dict[str, date], alerts: list[Alert], anomalies: list[str]) -> str:
-    date_parts = []
-    for rule in RULES:
-        if rule.key in latest_dates:
-            date_parts.append(f"{rule.label} {latest_dates[rule.key]}")
+    date_parts = [f"{rule.label} {latest_dates[rule.key]}" for rule in RULES if rule.key in latest_dates]
     blocks = ["# 三方换量合作方健康告警", f"数据日期：{'；'.join(date_parts) or '未知'}"]
     if anomalies:
         blocks.append("\n\n".join(["## 数据异常", *(f"- {item}" for item in anomalies)]))
@@ -303,9 +313,9 @@ def main() -> None:
     parser.add_argument("--today", help="Override Asia/Shanghai date for replay/testing (YYYY-MM-DD)")
     args = parser.parse_args()
     today = date.fromisoformat(args.today) if args.today else datetime.now(ZoneInfo("Asia/Shanghai")).date()
-    rows, parse_anomalies = parse_rows(read_data())
+    rows, parse_issues = parse_rows(read_data())
     latest_dates, alerts, anomalies = analyze(rows, today)
-    anomalies = parse_anomalies + anomalies
+    anomalies = [message for issue_date, message in parse_issues if issue_date in relevant_dates(today)] + anomalies
     if not alerts and not anomalies:
         print("No data anomaly or new partner alert. Alert file not created.")
         return

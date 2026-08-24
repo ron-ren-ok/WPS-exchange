@@ -13,11 +13,15 @@ SPEC.loader.exec_module(MODULE)
 
 
 def data_row(day, partner, new_users=None, d1=None, uninstall=None):
-    return MODULE.DataRow(
-        date.fromisoformat(day),
-        partner,
-        {"new_users": new_users, "d1": d1, "uninstall": uninstall},
-    )
+    return MODULE.DataRow(date.fromisoformat(day), partner, {"new_users": new_users, "d1": d1, "uninstall": uninstall})
+
+
+def text_cell(value):
+    return {"formattedValue": value}
+
+
+def number_cell(value):
+    return {"formattedValue": str(value), "effectiveValue": {"numberValue": value}}
 
 
 class PartnerHealthAlertTests(unittest.TestCase):
@@ -37,20 +41,16 @@ class PartnerHealthAlertTests(unittest.TestCase):
 
     def test_same_direction_continuous_alert_is_suppressed(self):
         rows = [
-            data_row("2026-08-15", "A", new_users=990),
-            data_row("2026-08-16", "A", new_users=1_000),
-            data_row("2026-08-22", "A", new_users=1_240),
-            data_row("2026-08-23", "A", new_users=1_250),
+            data_row("2026-08-15", "A", new_users=990), data_row("2026-08-16", "A", new_users=1_000),
+            data_row("2026-08-22", "A", new_users=1_240), data_row("2026-08-23", "A", new_users=1_250),
         ]
         _, alerts, _ = MODULE.analyze(rows, date(2026, 8, 24))
         self.assertEqual(alerts, [])
 
     def test_direction_change_creates_a_new_alert(self):
         rows = [
-            data_row("2026-08-15", "A", new_users=990),
-            data_row("2026-08-16", "A", new_users=1_000),
-            data_row("2026-08-22", "A", new_users=1_240),
-            data_row("2026-08-23", "A", new_users=700),
+            data_row("2026-08-15", "A", new_users=990), data_row("2026-08-16", "A", new_users=1_000),
+            data_row("2026-08-22", "A", new_users=1_240), data_row("2026-08-23", "A", new_users=700),
         ]
         _, alerts, _ = MODULE.analyze(rows, date(2026, 8, 24))
         self.assertEqual([(item.partner, item.metric, item.direction) for item in alerts], [("A", "new_users", "下跌")])
@@ -58,10 +58,7 @@ class PartnerHealthAlertTests(unittest.TestCase):
     def test_majority_same_direction_is_data_anomaly_not_partner_alert(self):
         rows = []
         for partner, baseline, current in (("A", 1_000, 1_300), ("B", 1_000, 1_400), ("C", 1_000, 1_050)):
-            rows.extend([
-                data_row("2026-08-16", partner, new_users=baseline),
-                data_row("2026-08-23", partner, new_users=current),
-            ])
+            rows.extend([data_row("2026-08-16", partner, new_users=baseline), data_row("2026-08-23", partner, new_users=current)])
         _, alerts, anomalies = MODULE.analyze(rows, date(2026, 8, 24))
         self.assertFalse(any(alert.metric == "new_users" for alert in alerts))
         self.assertTrue(any("2/3 个可比较合作方同时异常上涨" in item for item in anomalies))
@@ -79,16 +76,46 @@ class PartnerHealthAlertTests(unittest.TestCase):
         self.assertEqual(latest_dates["new_users"], date(2026, 8, 23))
         self.assertEqual(latest_dates["d1"], date(2026, 8, 22))
 
-    def test_stale_data_is_reported(self):
+    def test_missing_expected_date_is_reported(self):
         rows = [data_row("2026-08-20", "A", new_users=100)]
         _, _, anomalies = MODULE.analyze(rows, date(2026, 8, 24))
-        self.assertTrue(any("新增数据滞后 4 天" in item for item in anomalies))
+        self.assertTrue(any("新增缺少应有日期 2026-08-23" in item for item in anomalies))
+
+    def test_partial_newer_d1_is_ignored_until_mature(self):
+        rows = [
+            data_row("2026-08-15", "A", d1=0.20), data_row("2026-08-16", "A", d1=0.20),
+            data_row("2026-08-22", "A", d1=0.16), data_row("2026-08-23", "A", d1=0.05),
+        ]
+        latest_dates, alerts, _ = MODULE.analyze(rows, date(2026, 8, 24))
+        self.assertEqual(latest_dates["d1"], date(2026, 8, 22))
+        self.assertEqual([(item.metric, item.current_date, item.direction) for item in alerts], [("d1", date(2026, 8, 22), "下跌")])
+
+    def test_one_partner_missing_current_data_is_reported(self):
+        rows = [
+            data_row("2026-08-16", "A", new_users=1_000), data_row("2026-08-16", "B", new_users=900),
+            data_row("2026-08-23", "A", new_users=1_050),
+        ]
+        _, _, anomalies = MODULE.analyze(rows, date(2026, 8, 24))
+        self.assertTrue(any("新增缺少合作方数据：B" in item for item in anomalies))
+
+    def test_historical_formula_issue_does_not_repeat_forever(self):
+        old_issue = (date(2026, 1, 1), "旧公式错误")
+        messages = [message for issue_date, message in [old_issue] if issue_date in MODULE.relevant_dates(date(2026, 8, 24))]
+        self.assertEqual(messages, [])
+
+    def test_parse_rows_uses_data_extract_headers(self):
+        headers = ["日期", "合作方", "新增设备数", "次日留存率", "7日留存率", "大盘次日留存率", "大盘7日留存率", "当日卸载设备数", "当日卸载率", "大盘当日卸载率"]
+        raw_rows = [
+            [text_cell(value) for value in headers],
+            [text_cell("2026-08-23"), text_cell("Terabox"), number_cell(3029), {}, {}, {}, {}, number_cell(1057), number_cell(0.3489600528), number_cell(0.07283230358)],
+        ]
+        rows, issues = MODULE.parse_rows(raw_rows)
+        self.assertEqual(issues, [])
+        self.assertEqual(rows[0].data_date, date(2026, 8, 23))
+        self.assertEqual(rows[0].values, {"new_users": 3029.0, "d1": None, "uninstall": 0.3489600528})
 
     def test_markdown_uses_real_double_newlines_for_visual_lines(self):
-        alert = MODULE.Alert(
-            "CAD", "d1", "下跌", date(2026, 8, 22), date(2026, 8, 15),
-            0.15, 0.20, -0.05, -0.25,
-        )
+        alert = MODULE.Alert("CAD", "d1", "下跌", date(2026, 8, 22), date(2026, 8, 15), 0.15, 0.20, -0.05, -0.25)
         result = MODULE.alert_markdown({"d1": date(2026, 8, 22)}, [alert], [])
         self.assertIn("\n\n- 当前", result)
         self.assertIn("\n\n- 上周同日", result)
