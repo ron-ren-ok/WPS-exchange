@@ -23,6 +23,7 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=1
 DATA_RANGE = f"{SHEET_NAME}!P:Y"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 ERROR_PREFIXES = ("#REF!", "#DIV/0!", "#VALUE!", "#N/A", "#NAME?", "#NUM!", "#ERROR!")
+SPARKLINE_CHARS = "▁▂▃▄▅▆▇█"
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ class Alert:
     baseline: float
     difference: float
     relative_change: float
+    trend: str = ""
 
 
 RULES = (
@@ -203,6 +205,30 @@ def format_relative(value: float) -> str:
     return f"{sign}{value:.1%}"
 
 
+def sparkline(values: list[float | None]) -> str:
+    observed = [value for value in values if value is not None]
+    if not observed:
+        return "数据不足"
+    low, high = min(observed), max(observed)
+    if low == high:
+        return "".join("▄" if value is not None else "·" for value in values)
+    scale = len(SPARKLINE_CHARS) - 1
+    return "".join(
+        "·" if value is None else SPARKLINE_CHARS[round((value - low) / (high - low) * scale)]
+        for value in values
+    )
+
+
+def partner_trend(
+    index: dict[tuple[date, str], DataRow], partner: str, metric: str, end_date: date
+) -> str:
+    values = []
+    for offset in range(13, -1, -1):
+        row = index.get((end_date - timedelta(days=offset), partner))
+        values.append(row.values[metric] if row else None)
+    return sparkline(values)
+
+
 def analyze(rows: list[DataRow], today: date) -> tuple[dict[str, date], list[Alert], list[str]]:
     index = {(row.data_date, row.partner): row for row in rows}
     latest_dates: dict[str, date] = {}
@@ -274,6 +300,7 @@ def analyze(rows: list[DataRow], today: date) -> tuple[dict[str, date], list[Ale
                 baseline=baseline,
                 difference=current - baseline,
                 relative_change=relative_change(current, baseline),
+                trend=partner_trend(index, partner, rule.key, current_date),
             ))
 
         for direction in ("上涨", "下跌"):
@@ -293,7 +320,8 @@ def alert_block(alert: Alert) -> str:
         f"## {alert.partner}｜{rule.label}异常{alert.direction}",
         f"- 当前（{alert.current_date}）：{format_value(alert.current, rule.percent)}",
         f"- 上周同日（{alert.baseline_date}）：{format_value(alert.baseline, rule.percent)}",
-        f"- 变化：{format_difference(alert.difference, rule.percent)}，相对变化 {format_relative(alert.relative_change)}",
+        f"- 变化：{format_relative(alert.relative_change)}",
+        f"- 近14天趋势：{alert.trend}",
     ])
 
 

@@ -1,5 +1,5 @@
 import importlib.util
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 import sys
 import unittest
@@ -120,7 +120,26 @@ class PartnerHealthAlertTests(unittest.TestCase):
         self.assertIn("\n\n- 当前", result)
         self.assertIn("\n\n- 上周同日", result)
         self.assertIn("\n\n- 变化", result)
+        self.assertIn("\n\n- 近14天趋势：", result)
         self.assertNotIn("\n- 当前", result.replace("\n\n- 当前", ""))
+
+
+    def test_sparkline_renders_fourteen_points(self):
+        result = MODULE.sparkline([float(value) for value in range(14)])
+        self.assertEqual(len(result), 14)
+        self.assertEqual(result[0], "▁")
+        self.assertEqual(result[-1], "█")
+
+    def test_partner_trend_keeps_missing_days_visible(self):
+        end_date = date(2026, 8, 23)
+        rows = [
+            data_row((end_date - timedelta(days=offset)).isoformat(), "A", new_users=float(offset))
+            for offset in range(0, 14, 2)
+        ]
+        index = {(row.data_date, row.partner): row for row in rows}
+        result = MODULE.partner_trend(index, "A", "new_users", end_date)
+        self.assertEqual(len(result), 14)
+        self.assertIn("·", result)
 
 
 if __name__ == "__main__":
