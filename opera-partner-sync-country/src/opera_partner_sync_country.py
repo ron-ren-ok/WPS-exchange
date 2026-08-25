@@ -26,7 +26,7 @@ ALIASES = {
     "campaign": ("campaign",),
     "country": ("countrycode", "countrycodeiso", "countryiso", "country"),
     "new_users": ("newusers", "newuser", "installs", "installcount"),
-    "blood_volume": ("revenue", "earnings", "payout", "commission"),
+    "blood_volume": ("revenue", "earnings", "payout", "commission", "bloodvolume"),
 }
 
 
