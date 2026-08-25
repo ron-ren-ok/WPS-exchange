@@ -17,7 +17,7 @@ class OperaCountrySyncTest(unittest.TestCase):
         with zipfile.ZipFile(raw, "w") as archive:
             archive.writestr(
                 "report.csv",
-                "Date,Campaign,Country Code,New Users,Revenue\n"
+                "date,campaign,country,new_users,blood_volume\n"
                 "2026-08-24,wpstest2/opera.exe,IT,205,102.5\n"
                 "2026-08-24,wpstest2/opera.exe,IT,5,2.5\n"
                 "2026-08-24,wpstest,DE,8,4\n",
