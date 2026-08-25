@@ -6,8 +6,6 @@ on:
         description: End date (YYYY-MM-DD)
         required: false
         type: string
-  schedule:
-    - cron: "5 19 * * *"
 permissions:
   contents: read
 jobs:
