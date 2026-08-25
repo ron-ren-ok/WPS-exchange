@@ -113,7 +113,10 @@ def report_rows(raw_zip):
 def parse_report(raw_zip, start, end):
     result = {}
     for row in report_rows(raw_zip):
-        columns = map_columns(row)
+        try:
+            columns = map_columns(row)
+        except RuntimeError:
+            continue
         operation = SURFACES.get(str(row[columns["campaign"]] or "").strip())
         if not operation:
             continue
