@@ -15,6 +15,7 @@ class OperaCountrySyncTest(unittest.TestCase):
     def test_zip_csv_is_aggregated_by_country_and_surface(self):
         raw = io.BytesIO()
         with zipfile.ZipFile(raw, "w") as archive:
+            archive.writestr("links.csv", "Links Block Summary\nCrashes\n")
             archive.writestr(
                 "report.csv",
                 "date,campaign,country,new_users,blood_volume\n"
