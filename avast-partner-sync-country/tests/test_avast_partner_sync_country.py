@@ -21,11 +21,22 @@ class AvastCountrySyncTests(unittest.TestCase):
             "2026-08-24,mmm_wps_ppi_008_595_c,IT,8,4\n"
             "2026-08-24,ignored,US,99,99\n"
         ).encode()
-        rows = SYNC.parse_report(raw, date(2026, 8, 22), date(2026, 8, 24))
+        rows = SYNC.parse_report(raw)
         self.assertEqual(rows[(date(2026, 8, 23), "DE", "avast气泡")], {"new": 12, "blood": 6})
         self.assertEqual(rows[(date(2026, 8, 24), "US", "avast换量弹窗")], {"new": 4, "blood": 2.5})
         self.assertEqual(rows[(date(2026, 8, 24), "BR", "avast文档雷达")], {"new": 6, "blood": 3})
         self.assertEqual(rows[(date(2026, 8, 24), "IT", "avast卸载后弹出H5")], {"new": 8, "blood": 4})
+    def test_finds_campaign_column_by_the_requested_ids_and_uses_latest_data_day(self):
+        raw = (
+            "Date,Sub ID,Country Code,Install Count,Total Revenue\n"
+            "2026-08-21,mmm_wps_ppi_008_595_b,DE,1,1\n"
+            "2026-08-22,mmm_wps_ppi_008_595_b,DE,2,2\n"
+            "2026-08-23,mmm_wps_ppi_008_595_b,DE,3,3\n"
+            "2026-08-24,mmm_wps_ppi_008_595_b,DE,4,4\n"
+        ).encode()
+        selected, start, end = SYNC.latest_three_days(SYNC.parse_report(raw))
+        self.assertEqual((start, end), (date(2026, 8, 22), date(2026, 8, 24)))
+        self.assertEqual(set(day for day, _, _ in selected), {date(2026, 8, 22), date(2026, 8, 23), date(2026, 8, 24)})
 
     def test_existing_key_is_overwritten(self):
         headers = ["日期", "合作方", "国家代码", "运营位", "新增", "血量"]

@@ -3,12 +3,8 @@ name: Avast partner sync-Country
 on:
   workflow_dispatch:
     inputs:
-      start_date:
-        description: Start date (YYYY-MM-DD); defaults to three days through yesterday Beijing time
-        required: false
-        type: string
       end_date:
-        description: End date (YYYY-MM-DD); defaults to yesterday Beijing time
+        description: Optional latest data date (YYYY-MM-DD); defaults to the newest date in the CSV
         required: false
         type: string
 
@@ -29,7 +25,6 @@ jobs:
       - run: pip install -r requirements.txt
       - run: >-
           python src/avast_partner_sync_country.py
-          ${{ inputs.start_date && format('--start-date {0}', inputs.start_date) || '' }}
           ${{ inputs.end_date && format('--end-date {0}', inputs.end_date) || '' }}
         env:
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}

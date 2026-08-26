@@ -29,10 +29,10 @@ SURFACES = {
 }
 ALIASES = {
     "date": {"date", "day", "reportdate"},
-    "campaign": {"campaign", "campaignid", "campaignname", "placement", "placementid", "offer", "offerid"},
+    "campaign": {"campaign", "campaignid", "campaignname", "subcampaign", "subcampaignid", "placement", "placementid", "offer", "offerid", "source", "channel"},
     "country": {"country", "countrycode", "countryiso", "countrycodeiso", "geo"},
     "new": {"newusers", "newuser", "installs", "installcount", "installations", "downloads"},
-    "blood": {"revenue", "earnings", "payout", "commission", "cost", "spend", "ppi"},
+    "blood": {"revenue", "totalrevenue", "netrevenue", "estimatedrevenue", "earnings", "estimatedearnings", "payout", "totalpayout", "commission", "cost", "totalcost", "spend", "totalspend", "ppi", "amount", "totalamount", "amountusd", "revenueusd", "payoutusd", "costusd"},
 }
 
 
@@ -64,12 +64,12 @@ def norm(value):
     return re.sub(r"[^a-z0-9]+", "", str(value).strip().lower())
 
 
-def resolve_fields(row):
+def resolve_fields(row, require_campaign=True):
     available = {norm(header): header for header in row if header not in (None, "")}
     fields = {key: next((available[alias] for alias in aliases if alias in available), None) for key, aliases in ALIASES.items()}
-    missing = [key for key, value in fields.items() if value is None]
+    missing = [key for key, value in fields.items() if value is None and (require_campaign or key != "campaign")]
     if missing:
-        raise RuntimeError("Avast CSV missing required columns: " + ", ".join(missing))
+        raise RuntimeError("Avast CSV missing required columns: " + ", ".join(missing) + "; available columns: " + ", ".join(str(header) for header in row if header))
     return fields
 
 
@@ -85,17 +85,26 @@ def csv_rows(raw):
     raise RuntimeError("could not decode Avast CSV attachment")
 
 
-def parse_report(raw, start, end):
+def campaign_column(rows, fields):
+    if fields["campaign"] is not None:
+        return fields["campaign"]
+    candidates = [header for header in rows[0] if any(str(row.get(header) or "").strip().lower() in SURFACES for row in rows)]
+    if len(candidates) != 1:
+        raise RuntimeError("Avast CSV could not uniquely locate the campaign column; available columns: " + ", ".join(str(header) for header in rows[0] if header))
+    return candidates[0]
+
+
+def parse_report(raw):
+    rows = csv_rows(raw)
+    fields = resolve_fields(rows[0], require_campaign=False)
+    fields["campaign"] = campaign_column(rows, fields)
     output = {}
-    for row in csv_rows(raw):
-        fields = resolve_fields(row)
+    for row in rows:
         campaign = str(row[fields["campaign"]] or "").strip().lower()
         operation = SURFACES.get(campaign)
         if operation is None:
             continue
         day = parse_day(row[fields["date"]])
-        if not start <= day <= end:
-            continue
         country = str(row[fields["country"]] or "").strip().upper()
         if not re.fullmatch(r"[A-Z]{2}", country):
             raise RuntimeError(f"invalid Avast country code: {country!r}")
@@ -103,6 +112,15 @@ def parse_report(raw, start, end):
         metrics["new"] += number(row[fields["new"]])
         metrics["blood"] += number(row[fields["blood"]])
     return output
+
+
+def latest_three_days(source, end=None):
+    eligible = [day for day, _, _ in source if end is None or day <= end]
+    if not eligible:
+        raise RuntimeError("Avast CSV has no mapped data on or before the requested end date")
+    anchor = max(eligible)
+    start = anchor - timedelta(days=2)
+    return {(day, country, operation): metrics for (day, country, operation), metrics in source.items() if start <= day <= anchor}, start, anchor
 
 
 def decoded(value):
@@ -226,20 +244,18 @@ def main():
     username, password, raw = os.environ.get("GMAIL_IMAP_USERNAME", ""), os.environ.get("GMAIL_APP_PASSWORD", ""), os.environ.get("GOOGLE_SHEET_SERVICE_ACCOUNT_JSON", "")
     if not username or not password or not raw:
         raise RuntimeError("missing required GitHub Actions secret")
-    end = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
-    start = parse_day(args.start_date) if args.start_date else end - timedelta(days=2)
-    if start > end:
-        raise RuntimeError("start date is after end date")
+
     source = {}
     client = gmail(username, password)
     try:
         for raw_csv in reports(client):
-            for key, metrics in parse_report(raw_csv, start, end).items():
+            for key, metrics in parse_report(raw_csv).items():
                 source[key] = metrics
     finally:
         client.logout()
     if not source:
-        raise RuntimeError("no verified Avast country-report CSV rows were found in the requested date range")
+        raise RuntimeError("no verified Avast country-report CSV rows were found")
+    source, start, end = latest_three_days(source, parse_day(args.end_date) if args.end_date else None)
     api = service(raw)
     headers, found = targets(api)
     updates, appends, overwrites = plan(headers, found, source)
