@@ -58,6 +58,11 @@ def number(value):
     return int(parsed) if parsed.is_integer() else parsed
 
 
+def default_start(end):
+    """Return the three calendar dates refreshed by a default run, inclusive."""
+    return end - timedelta(days=2)
+
+
 def map_columns(row):
     names = {normalize(header): header for header in row if header not in (None, "")}
     result = {field: next((names[name] for name in aliases if name in names), None)
@@ -275,7 +280,7 @@ def main():
     if not username or not password or not service_json:
         raise RuntimeError("missing required GitHub Actions secret")
     end = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
-    start = parse_day(args.start_date) if args.start_date else end
+    start = parse_day(args.start_date) if args.start_date else default_start(end)
     if start > end:
         raise RuntimeError("start date is after end date")
     gmail = gmail_client(username, password)
