@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: Start date (YYYY-MM-DD); defaults to yesterday Beijing time
+        description: Start date (YYYY-MM-DD); defaults to two days before end date
         required: false
         type: string
       end_date:
