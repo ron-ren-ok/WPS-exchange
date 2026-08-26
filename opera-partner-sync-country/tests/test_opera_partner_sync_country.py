@@ -30,5 +30,9 @@ class OperaCountrySyncTest(unittest.TestCase):
                          {"new_users": 8, "blood_volume": 4})
 
 
+    def test_default_window_covers_three_calendar_days(self):
+        self.assertEqual(sync.default_start(date(2026, 8, 25)), date(2026, 8, 23))
+
+
 if __name__ == "__main__":
     unittest.main()
