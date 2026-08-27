@@ -1,0 +1,40 @@
+name: CCleaner partner sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Start date (YYYY-MM-DD); defaults to two days before the newest CCleaner report date"
+        required: false
+        type: string
+      end_date:
+        description: "Use the latest CCleaner report date on or before YYYY-MM-DD"
+        required: false
+        type: string
+
+  schedule:
+    # 03:00 Beijing time = 19:00 UTC on the preceding day.
+    - cron: "0 19 * * *"
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ccleaner-partner-sync
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: >-
+          python src/ccleaner_partner_sync.py
+          ${{ inputs.start_date && format('--start-date {0}', inputs.start_date) || '' }}
+          ${{ inputs.end_date && format('--end-date {0}', inputs.end_date) || '' }}
+        env:
+          GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
+          GMAIL_IMAP_USERNAME: ${{ secrets.GMAIL_IMAP_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
