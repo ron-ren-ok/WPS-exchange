@@ -28,6 +28,9 @@ class CCleanerPartnerSyncTests(unittest.TestCase):
             date(2026, 8, 20): {"new_users": 4, "blood_volume": 94},
         })
 
+    def test_accepts_google_sheets_date_serial_numbers(self):
+        self.assertEqual(SYNC.parse_day(45925), date(2025, 9, 25))
+
     def test_selects_anchor_and_previous_two_consecutive_days(self):
         records = {
             date(2026, 8, 21): {"new_users": 1},

@@ -24,6 +24,12 @@ HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
 
 def parse_day(value):
     text = str(value).strip().split(",", 1)[0]
+    try:
+        serial = float(text)
+        if 20000 <= serial <= 80000:
+            return (datetime(1899, 12, 30) + timedelta(days=serial)).date()
+    except ValueError:
+        pass
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d.%m.%Y", "%m/%d/%Y", "%d %b %Y", "%b %d, %Y"):
         try:
             return datetime.strptime(text, fmt).date()
