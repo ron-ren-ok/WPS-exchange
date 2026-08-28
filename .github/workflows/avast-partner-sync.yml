@@ -39,3 +39,14 @@ jobs:
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
           GMAIL_IMAP_USERNAME: ${{ secrets.GMAIL_IMAP_USERNAME }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      - name: Notify production webhook when Avast sync fails
+        if: ${{ failure() }}
+        shell: pwsh
+        env:
+          WPS_WEBHOOK_URL: ${{ secrets.WPS_WEBHOOK_URL }}
+          WPS_WEBHOOK_KEY: ${{ secrets.WPS_WEBHOOK_KEY }}
+          WPS_WEBHOOK_SECRET: ${{ secrets.WPS_WEBHOOK_SECRET }}
+        run: >-
+          ../daily-progress/scripts/send-wps-webhook.ps1
+          -Markdown 'Avast partner sync运行出错，请检查。'
+          -WebhookUrl $env:WPS_WEBHOOK_URL
