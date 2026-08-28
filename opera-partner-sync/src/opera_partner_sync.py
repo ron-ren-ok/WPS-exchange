@@ -4,6 +4,7 @@ import email
 import imaplib
 import io
 import json
+import logging
 import os
 import re
 import sys
@@ -11,6 +12,8 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pdfplumber
+
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
 SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 SHEET_NAME = "合作方新增血量"
@@ -142,7 +145,12 @@ def source_rows(client, surface, start, end):
     if not resolved:
         raise RuntimeError(f"no verified {surface} Opera PDF rows in the requested date range")
     unavailable = [start + timedelta(days=i) for i in range((end - start).days + 1) if start + timedelta(days=i) not in resolved]
-    print(json.dumps({"surface": surface, "available_days": len(resolved), "unavailable_days": [d.isoformat() for d in unavailable]}, ensure_ascii=False))
+    print(json.dumps({
+        "surface": surface,
+        "available_days": len(resolved),
+        "unavailable_day_count": len(unavailable),
+        "first_unavailable_day": unavailable[0].isoformat() if unavailable else None,
+    }, ensure_ascii=False))
     return resolved
 
 
@@ -315,15 +323,36 @@ def gx_messages(client):
 
 def gx_source_rows(client, surface, start, end):
     resolved = {}
+    compatible_attachments = 0
+    skipped_attachments = 0
+    utm_content = GX_SURFACES[surface]["utm_content"]
     for message in gx_messages(client):
         if SENDER not in message.get("From", "").lower():
             continue
         for raw_pdf in attachments(message):
-            for day, metrics in parse_opera_gx_pdf(raw_pdf, GX_SURFACES[surface]["utm_content"]).items():
+            try:
+                metrics_by_day = parse_opera_gx_pdf(raw_pdf, utm_content)
+            except ValueError as exc:
+                detail = str(exc)
+                if "OperaGX Summary table headers were not found" in detail:
+                    skipped_attachments += 1
+                    continue
+                if f"OperaGX Summary table has no {utm_content} rows" in detail:
+                    compatible_attachments += 1
+                    continue
+                raise
+            compatible_attachments += 1
+            for day, metrics in metrics_by_day.items():
                 if start <= day <= end and day not in resolved:
                     resolved[day] = metrics
-    # A GX report can legitimately contain only one UTM content (for example, toast).
-    # Treat the other surface as unreported instead of failing the whole sync.
+    if not compatible_attachments:
+        raise RuntimeError(f"no compatible OperaGX PDF attachments found for {surface}")
+    print(json.dumps({
+        "partner": GX_PARTNER,
+        "surface": surface,
+        "available_days": len(resolved),
+        "skipped_incompatible_attachments": skipped_attachments,
+    }, ensure_ascii=False))
     return resolved
 
 

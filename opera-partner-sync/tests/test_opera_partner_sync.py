@@ -37,6 +37,30 @@ Day Utm Content New Users Revenue
         self.assertEqual(OPERA.parse_opera_gx_text(gx, "toast")[date(2026, 8, 27)], {"new_users": 10626, "blood_volume": 1169.95})
         self.assertEqual(OPERA.parse_opera_gx_text(gx, "bundle")[date(2026, 8, 27)], {"new_users": 4321, "blood_volume": 456.78})
 
+    def test_gx_source_skips_incompatible_attachment(self):
+        original_messages = OPERA.gx_messages
+        original_attachments = OPERA.attachments
+        original_parser = OPERA.parse_opera_gx_pdf
+        try:
+            OPERA.gx_messages = lambda _client: [{"From": OPERA.SENDER}, {"From": OPERA.SENDER}]
+            OPERA.attachments = lambda _message: [b"pdf"]
+            calls = iter([
+                ValueError("OperaGX Summary table headers were not found"),
+                {date(2026, 8, 27): {"new_users": 10, "blood_volume": 2}},
+            ])
+            def fake_parser(_raw_pdf, _utm_content):
+                result = next(calls)
+                if isinstance(result, Exception):
+                    raise result
+                return result
+            OPERA.parse_opera_gx_pdf = fake_parser
+            rows = OPERA.gx_source_rows(object(), "bubble", date(2026, 8, 27), date(2026, 8, 27))
+            self.assertEqual(rows[date(2026, 8, 27)], {"new_users": 10, "blood_volume": 2})
+        finally:
+            OPERA.gx_messages = original_messages
+            OPERA.attachments = original_attachments
+            OPERA.parse_opera_gx_pdf = original_parser
+
     def test_rejects_duplicate_campaign_date(self):
         duplicate = PDF_TEXT.replace("Performance", "5 2026-07-12 wpstest 2 $1.00\nPerformance")
         with self.assertRaisesRegex(ValueError, "duplicate"):
