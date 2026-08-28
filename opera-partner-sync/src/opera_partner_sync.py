@@ -16,6 +16,12 @@ SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 SHEET_NAME = "合作方新增血量"
 SENDER = "noreply@lookermail.com"
 SUBJECT = "Opera for Computers distribution partner dashboard"
+GX_SUBJECT = "OperaGX for Computers distribution partner dashboard"
+GX_PARTNER = "OperaGX"
+GX_SURFACES = {
+    "bubble": {"utm_content": "toast", "operation": "气泡"},
+    "popup": {"utm_content": "bundle", "operation": "换量弹窗"},
+}
 HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
 PARTNER = "Opera"
 SURFACES = {
@@ -273,6 +279,118 @@ def main():
         sheets.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
     append_rows(sheets, headers, appends)
     print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
+
+
+def parse_opera_gx_text(text, utm_content):
+    if "Summary table" not in text or "Day Utm Content New Users Revenue" not in text:
+        raise ValueError("OperaGX Summary table headers were not found")
+    pattern = re.compile(rf"(?m)^\d+\s+(\d{{4}}-\d{{2}}-\d{{2}})\s+({re.escape(utm_content)})\s+([\d,]+)\s+\$([\d,]+(?:\.\d+)?)\s*$")
+    rows = {}
+    for day_text, _content, new_users, revenue in pattern.findall(text):
+        day = parse_day(day_text)
+        if day in rows:
+            raise ValueError(f"OperaGX duplicate {utm_content} row for {day}")
+        rows[day] = {"new_users": number(new_users), "blood_volume": number(revenue)}
+    if not rows:
+        raise ValueError(f"OperaGX Summary table has no {utm_content} rows")
+    return rows
+
+
+def parse_opera_gx_pdf(raw_pdf, utm_content):
+    with pdfplumber.open(io.BytesIO(raw_pdf)) as pdf:
+        text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    return parse_opera_gx_text(text, utm_content)
+
+
+def gx_messages(client):
+    select_all_mail(client)
+    status, data = client.uid("search", None, "SUBJECT", f'"{GX_SUBJECT}"')
+    if status != "OK":
+        raise RuntimeError("Gmail IMAP subject search failed")
+    for uid in reversed(data[0].split()):
+        status, payload = client.uid("fetch", uid, "(RFC822)")
+        if status == "OK" and payload and isinstance(payload[0], tuple):
+            yield email.message_from_bytes(payload[0][1])
+
+
+def gx_source_rows(client, surface, start, end):
+    resolved = {}
+    for message in gx_messages(client):
+        if SENDER not in message.get("From", "").lower():
+            continue
+        for raw_pdf in attachments(message):
+            for day, metrics in parse_opera_gx_pdf(raw_pdf, GX_SURFACES[surface]["utm_content"]).items():
+                if start <= day <= end and day not in resolved:
+                    resolved[day] = metrics
+    # A GX report can legitimately contain only one UTM content (for example, toast).
+    # Treat the other surface as unreported instead of failing the whole sync.
+    return resolved
+
+
+def gx_first_missing(rows, cutoff):
+    candidates = []
+    for spec in GX_SURFACES.values():
+        days = sorted(day for day, partner, operation in rows if partner == GX_PARTNER and operation == spec["operation"] and day <= cutoff)
+        if days:
+            expected = {days[0] + timedelta(days=i) for i in range((cutoff - days[0]).days + 1)}
+            missing = expected - set(days)
+            candidates.append(min(missing) if missing else cutoff)
+    return min(candidates) if candidates else cutoff
+
+
+def gx_plan_writes(headers, existing_rows, sources, allow_overwrite):
+    positions = {header: headers.index(header) for header in HEADERS}
+    updates, appends, conflicts, overwrites = [], [], [], []
+    for surface, source in sources.items():
+        operation = GX_SURFACES[surface]["operation"]
+        for day, metrics in sorted(source.items()):
+            row = existing_rows.get((day, GX_PARTNER, operation))
+            if row is None:
+                appends.append({"日期": day, "合作方": GX_PARTNER, "运营位": operation, "新增": metrics["new_users"], "血量": metrics["blood_volume"]})
+                continue
+            for header, metric in (("新增", "new_users"), ("血量", "blood_volume")):
+                current, wanted = value_at(row, positions[header]), metrics[metric]
+                if current in ("", None):
+                    updates.append({"range": f"'{SHEET_NAME}'!{col_name(positions[header])}{row['row']}", "values": [[wanted]]})
+                elif not values_match(current, wanted):
+                    detail = f"{day} {GX_PARTNER}/{operation}/{header}: sheet={current}, source={wanted}"
+                    if allow_overwrite:
+                        updates.append({"range": f"'{SHEET_NAME}'!{col_name(positions[header])}{row['row']}", "values": [[wanted]]})
+                        overwrites.append(detail)
+                    else:
+                        conflicts.append(detail)
+    if conflicts:
+        raise RuntimeError("refusing to overwrite conflicts: " + "; ".join(conflicts))
+    return updates, appends, overwrites
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start-date")
+    parser.add_argument("--end-date")
+    parser.add_argument("--allow-overwrite", action="store_true")
+    args = parser.parse_args()
+    secrets = {name: os.environ.get(name) for name in ("GMAIL_IMAP_USERNAME", "GMAIL_APP_PASSWORD", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON")}
+    if not all(secrets.values()):
+        raise RuntimeError("missing required GitHub Actions secret")
+    end = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
+    sheets = sheets_service(secrets["GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"])
+    headers, target_rows = get_sheet(sheets)
+    opera_start = parse_day(args.start_date) if args.start_date else first_missing(target_rows, end)
+    gx_start = parse_day(args.start_date) if args.start_date else gx_first_missing(target_rows, end)
+    gmail = gmail_imap_client(secrets["GMAIL_IMAP_USERNAME"], secrets["GMAIL_APP_PASSWORD"])
+    try:
+        opera_sources = {surface: source_rows(gmail, surface, opera_start, end) for surface in SURFACES}
+        gx_sources = {surface: gx_source_rows(gmail, surface, gx_start, end) for surface in GX_SURFACES}
+    finally:
+        gmail.logout()
+    updates, appends, overwrites = plan_writes(headers, target_rows, opera_sources, args.allow_overwrite)
+    gx_updates, gx_appends, gx_overwrites = gx_plan_writes(headers, target_rows, gx_sources, args.allow_overwrite)
+    updates.extend(gx_updates); appends.extend(gx_appends); overwrites.extend(gx_overwrites)
+    if updates:
+        sheets.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
+    append_rows(sheets, headers, appends)
+    print(json.dumps({"ranges": [{"partner": PARTNER, "start": opera_start.isoformat(), "end": end.isoformat()}, {"partner": GX_PARTNER, "start": gx_start.isoformat(), "end": end.isoformat()}], "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

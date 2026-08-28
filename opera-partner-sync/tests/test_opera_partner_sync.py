@@ -27,6 +27,16 @@ class OperaTests(unittest.TestCase):
         self.assertEqual(bubble[date(2026, 7, 12)], {"new_users": 11203, "blood_volume": 943.79})
         self.assertEqual(popup[date(2026, 7, 11)], {"new_users": 10345, "blood_volume": 678.62})
 
+
+    def test_gx_utm_content_mapping(self):
+        gx = """Summary table
+Day Utm Content New Users Revenue
+1 2026-08-27 toast 10,626 $1,169.95
+2 2026-08-27 bundle 4,321 $456.78
+"""
+        self.assertEqual(OPERA.parse_opera_gx_text(gx, "toast")[date(2026, 8, 27)], {"new_users": 10626, "blood_volume": 1169.95})
+        self.assertEqual(OPERA.parse_opera_gx_text(gx, "bundle")[date(2026, 8, 27)], {"new_users": 4321, "blood_volume": 456.78})
+
     def test_rejects_duplicate_campaign_date(self):
         duplicate = PDF_TEXT.replace("Performance", "5 2026-07-12 wpstest 2 $1.00\nPerformance")
         with self.assertRaisesRegex(ValueError, "duplicate"):
