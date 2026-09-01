@@ -3,6 +3,7 @@ import io
 import unittest
 import zipfile
 from datetime import date
+from email.message import EmailMessage
 from pathlib import Path
 
 path = Path(__file__).resolve().parents[1] / "src" / "opera_partner_sync_country.py"
@@ -12,6 +13,34 @@ spec.loader.exec_module(sync)
 
 
 class OperaCountrySyncTest(unittest.TestCase):
+    def test_only_the_newest_matching_email_is_read(self):
+        def message(attachment):
+            result = EmailMessage()
+            result["From"] = "Looker <noreply@lookermail.com>"
+            result["Subject"] = sync.SUBJECT
+            result.add_attachment(attachment, maintype="application", subtype="zip", filename="report.zip")
+            return result.as_bytes()
+
+        class FakeClient:
+            def __init__(self):
+                self.fetched_uids = []
+
+            def list(self):
+                return "OK", []
+
+            def select(self, mailbox, readonly):
+                return "OK", []
+
+            def uid(self, command, *args):
+                if command == "search":
+                    return "OK", [b"100 200"]
+                self.fetched_uids.append(args[0])
+                messages = {b"100": message(b"historical"), b"200": message(b"newest")}
+                return "OK", [(None, messages[args[0]])]
+
+        client = FakeClient()
+        self.assertEqual(list(sync.latest_zip_attachments(client)), [b"newest"])
+        self.assertEqual(client.fetched_uids, [b"200"])
     def test_zip_csv_is_aggregated_by_country_and_surface(self):
         raw = io.BytesIO()
         with zipfile.ZipFile(raw, "w") as archive:

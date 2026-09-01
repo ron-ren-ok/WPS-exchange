@@ -150,7 +150,7 @@ def gmail_client(username, password):
         raise RuntimeError("Gmail IMAP login failed") from exc
 
 
-def zip_attachments(client):
+def latest_zip_attachments(client):
     status, mailboxes = client.list()
     if status != "OK":
         raise RuntimeError("Gmail mailbox listing failed")
@@ -158,23 +158,26 @@ def zip_attachments(client):
                      for item in mailboxes if b"\\All" in item), None)
     if client.select(all_mail or "INBOX", readonly=True)[0] != "OK":
         raise RuntimeError("Gmail mailbox select failed")
-    status, data = client.uid("search", None, "SUBJECT", f'"{SUBJECT}"')
+    status, data = client.uid("search", None, "FROM", f'"{SENDER}"', "SUBJECT", f'"{SUBJECT}"')
     if status != "OK":
         raise RuntimeError("Gmail subject search failed")
-    for uid in reversed(data[0].split()):
-        status, payload = client.uid("fetch", uid, "(RFC822)")
-        if status != "OK" or not payload or not isinstance(payload[0], tuple):
-            continue
-        message = email.message_from_bytes(payload[0][1])
-        if parseaddr(message.get("From", ""))[1].lower() != SENDER:
-            continue
-        if message.get("Subject", "").strip() != SUBJECT:
-            continue
-        for part in message.walk():
-            raw, filename = part.get_payload(decode=True), part.get_filename() or ""
-            if raw and filename.lower().endswith(".zip"):
-                yield raw
-
+    uids = data[0].split()
+    if not uids:
+        return
+    # IMAP SEARCH returns UIDs in ascending order, so the final UID is the newest
+    # matching message. Historical reports must never affect the current sync.
+    status, payload = client.uid("fetch", uids[-1], "(RFC822)")
+    if status != "OK" or not payload or not isinstance(payload[0], tuple):
+        return
+    message = email.message_from_bytes(payload[0][1])
+    if parseaddr(message.get("From", ""))[1].lower() != SENDER:
+        return
+    if message.get("Subject", "").strip() != SUBJECT:
+        return
+    for part in message.walk():
+        raw, filename = part.get_payload(decode=True), part.get_filename() or ""
+        if raw and filename.lower().endswith(".zip"):
+            yield raw
 
 def sheet_service(raw):
     from google.oauth2.service_account import Credentials
@@ -286,7 +289,7 @@ def main():
     gmail = gmail_client(username, password)
     try:
         source = {}
-        for raw_zip in zip_attachments(gmail):
+        for raw_zip in latest_zip_attachments(gmail):
             for key, metrics in parse_report(raw_zip, start, end).items():
                 source.setdefault(key, metrics)
     finally:
