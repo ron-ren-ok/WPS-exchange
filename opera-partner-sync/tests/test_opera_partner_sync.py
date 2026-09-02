@@ -37,6 +37,42 @@ Day Utm Content New Users Revenue
         self.assertEqual(OPERA.parse_opera_gx_text(gx, "toast")[date(2026, 8, 27)], {"new_users": 10626, "blood_volume": 1169.95})
         self.assertEqual(OPERA.parse_opera_gx_text(gx, "bundle")[date(2026, 8, 27)], {"new_users": 4321, "blood_volume": 456.78})
 
+    def test_gx_latest_dashboard_mapping(self):
+        gx = """Summary table
+Day Utm Content New Users Revenue
+1 2026-09-01 bundle 5,508 $706.46
+2 2026-09-01 toast 468 $156.93
+3 2026-08-31 toast 963 $322.05
+"""
+        self.assertEqual(OPERA.parse_opera_gx_text(gx, "bundle")[date(2026, 9, 1)], {"new_users": 5508, "blood_volume": 706.46})
+        self.assertEqual(OPERA.parse_opera_gx_text(gx, "toast")[date(2026, 9, 1)], {"new_users": 468, "blood_volume": 156.93})
+
+
+    def test_gx_fetches_only_the_latest_matching_message(self):
+        class FakeImap:
+            def list(self):
+                return "OK", [b'* LIST (\\HasNoChildren \\All) "/" "[Gmail]/All Mail"']
+
+            def select(self, _mailbox, readonly):
+                self.readonly = readonly
+                return "OK", [b"0"]
+
+            def uid(self, *args):
+                if args[0] == "search":
+                    self.search_args = args
+                    return "OK", [b"101 102"]
+                self.fetch_args = args
+                message = EmailMessage()
+                message["From"] = OPERA.SENDER
+                message.set_content("latest report")
+                return "OK", [(b"RFC822", message.as_bytes())]
+
+        client = FakeImap()
+        messages = list(OPERA.gx_messages(client))
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(client.search_args, ("search", None, "FROM", OPERA.SENDER, "SUBJECT", f'"{OPERA.GX_SUBJECT}"'))
+        self.assertEqual(client.fetch_args, ("fetch", b"102", "(RFC822)"))
+
 
     def test_gx_appends_with_spaced_partner_name(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]

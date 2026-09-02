@@ -11,6 +11,8 @@
 
 长表字段为「日期、合作方、运营位、新增、血量」。同步器以「日期 + 合作方 + 运营位」定位记录：已有记录更新新增和血量；不存在则追加一行。
 
+Opera GX 仅解析发件人 `noreply@lookermail.com`、标题为 `OperaGX for Computers distribution partner dashboard` 的最新一封邮件；该滚动看板中的 `bundle` 对应换量弹窗，`toast` 对应气泡。
+
 仅接受 `noreply@lookermail.com` 发件、主题为 `Opera for Computers distribution partner dashboard` 或 `OperaGX for Computers distribution partner dashboard` 的带 PDF 邮件。同一日期采用邮箱中最新报表的值，默认补齐至北京时间昨天。
 
 ## GitHub Actions Secrets

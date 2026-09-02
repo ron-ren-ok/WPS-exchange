@@ -312,13 +312,17 @@ def parse_opera_gx_pdf(raw_pdf, utm_content):
 
 def gx_messages(client):
     select_all_mail(client)
-    status, data = client.uid("search", None, "SUBJECT", f'"{GX_SUBJECT}"')
+    status, data = client.uid("search", None, "FROM", SENDER, "SUBJECT", f'"{GX_SUBJECT}"')
     if status != "OK":
         raise RuntimeError("Gmail IMAP subject search failed")
-    for uid in reversed(data[0].split()):
-        status, payload = client.uid("fetch", uid, "(RFC822)")
-        if status == "OK" and payload and isinstance(payload[0], tuple):
-            yield email.message_from_bytes(payload[0][1])
+    uids = data[0].split()
+    if not uids:
+        return
+    # Looker dashboards are rolling reports.  Only the latest matching message
+    # represents the current source of truth; older PDFs must not fill gaps.
+    status, payload = client.uid("fetch", uids[-1], "(RFC822)")
+    if status == "OK" and payload and isinstance(payload[0], tuple):
+        yield email.message_from_bytes(payload[0][1])
 
 
 def gx_source_rows(client, surface, start, end):
