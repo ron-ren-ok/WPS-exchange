@@ -6,8 +6,8 @@
 | --- | --- | --- |
 | `wpstest2/opera.exe` | Opera | 换量弹窗 |
 | `wpstest` | Opera | 气泡 |
-| `toast`（GX 报表的 `Utm Content`） | OperaGX | 气泡 |
-| `bundle`（GX 报表的 `Utm Content`） | OperaGX | 换量弹窗 |
+| `toast`（GX 报表的 `Utm Content`） | Opera GX | 气泡 |
+| `bundle`（GX 报表的 `Utm Content`） | Opera GX | 换量弹窗 |
 
 长表字段为「日期、合作方、运营位、新增、血量」。同步器以「日期 + 合作方 + 运营位」定位记录：已有记录更新新增和血量；不存在则追加一行。
 

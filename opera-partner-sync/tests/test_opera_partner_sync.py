@@ -37,7 +37,26 @@ Day Utm Content New Users Revenue
         self.assertEqual(OPERA.parse_opera_gx_text(gx, "toast")[date(2026, 8, 27)], {"new_users": 10626, "blood_volume": 1169.95})
         self.assertEqual(OPERA.parse_opera_gx_text(gx, "bundle")[date(2026, 8, 27)], {"new_users": 4321, "blood_volume": 456.78})
 
+
+    def test_gx_appends_with_spaced_partner_name(self):
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        updates, appends, overwrites = OPERA.gx_plan_writes(
+            headers,
+            {},
+            {"bubble": {date(2026, 8, 27): {"new_users": 10, "blood_volume": 2}}},
+            allow_overwrite=False,
+        )
+        self.assertEqual(updates, [])
+        self.assertEqual(overwrites, [])
+        self.assertEqual(appends, [{
+            "日期": date(2026, 8, 27),
+            "合作方": "Opera GX",
+            "运营位": "气泡",
+            "新增": 10,
+            "血量": 2,
+        }])
     def test_gx_source_skips_incompatible_attachment(self):
+
         original_messages = OPERA.gx_messages
         original_attachments = OPERA.attachments
         original_parser = OPERA.parse_opera_gx_pdf

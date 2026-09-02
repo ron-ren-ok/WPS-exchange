@@ -20,7 +20,7 @@ SHEET_NAME = "合作方新增血量"
 SENDER = "noreply@lookermail.com"
 SUBJECT = "Opera for Computers distribution partner dashboard"
 GX_SUBJECT = "OperaGX for Computers distribution partner dashboard"
-GX_PARTNER = "OperaGX"
+GX_PARTNER = "Opera GX"
 GX_SURFACES = {
     "bubble": {"utm_content": "toast", "operation": "气泡"},
     "popup": {"utm_content": "bundle", "operation": "换量弹窗"},
