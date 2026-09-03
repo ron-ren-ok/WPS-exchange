@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -19,6 +20,24 @@ SURFACES = {
     "360-3": "卸载后引导H5",
     "360-5": "文档雷达",
 }
+
+
+def execute_sheets_request(request, http_error=None):
+    """Execute a Sheets API request with bounded retries for transient failures."""
+    if http_error is None:
+        from googleapiclient.errors import HttpError
+        http_error = HttpError
+
+    for attempt in range(4):
+        try:
+            return request.execute()
+        except http_error as exc:
+            status = getattr(exc.resp, "status", None)
+            if status != 429 and not (500 <= status < 600):
+                raise
+            if attempt == 3:
+                raise
+            time.sleep(3)
 
 
 def parse_day(value):
@@ -203,13 +222,13 @@ def append_rows(service, headers, records):
         row[positions["运营位"]] = record["运营位"]
         row[positions["新增"]] = record["新增"]
         values.append(row)
-    service.spreadsheets().values().append(
+    execute_sheets_request(service.spreadsheets().values().append(
         spreadsheetId=TARGET_SHEET_ID,
         range=f"'{TARGET_SHEET_NAME}'!A1:{col_name(len(headers) - 1)}",
         valueInputOption="USER_ENTERED",
         insertDataOption="INSERT_ROWS",
         body={"majorDimension": "ROWS", "values": values},
-    ).execute()
+    ))
 
 
 def sheets_service(service_json):
@@ -231,13 +250,13 @@ def main():
     end = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
     requested_start = parse_day(args.start_date) if args.start_date else None
     service = sheets_service(service_json)
-    target_values = service.spreadsheets().values().get(
+    target_values = execute_sheets_request(service.spreadsheets().values().get(
         spreadsheetId=TARGET_SHEET_ID, range=f"'{TARGET_SHEET_NAME}'!A:E", valueRenderOption="UNFORMATTED_VALUE", dateTimeRenderOption="SERIAL_NUMBER"
-    ).execute().get("values", [])
+    )).get("values", [])
     headers, existing = target_records(target_values)
-    source_seed = service.spreadsheets().values().get(
+    source_seed = execute_sheets_request(service.spreadsheets().values().get(
         spreadsheetId=SOURCE_SHEET_ID, range=f"'{SOURCE_SHEET_NAME}'!A1:{SOURCE_LAST_COLUMN}20", valueRenderOption="UNFORMATTED_VALUE"
-    ).execute().get("values", [])
+    )).get("values", [])
     source_first_row, source_first_day = first_source_day(source_seed)
     if requested_start and requested_start > end:
         raise RuntimeError("start date is after end date")
@@ -248,11 +267,11 @@ def main():
     source_start = min(key[0] for key in required_keys)
     source_start_row = source_first_row + (source_start - source_first_day).days
     source_end_row = source_first_row + (end - source_first_day).days
-    source_rows = service.spreadsheets().values().get(
+    source_rows = execute_sheets_request(service.spreadsheets().values().get(
         spreadsheetId=SOURCE_SHEET_ID,
         range=f"'{SOURCE_SHEET_NAME}'!A{source_start_row}:{SOURCE_LAST_COLUMN}{source_end_row}",
         valueRenderOption="UNFORMATTED_VALUE",
-    ).execute().get("values", [])
+    )).get("values", [])
     source = source_records([source_seed[0], *source_rows], source_start, end)
     source = {key: value for key, value in source.items() if key in required_keys}
     unavailable = sorted(required_keys - set(source))
@@ -260,9 +279,9 @@ def main():
     # and must not block the other independently available operating-position records.
     updates, appends, overwrites, skipped_conflicts = plan_writes(headers, existing, source, args.allow_overwrite)
     if updates:
-        service.spreadsheets().values().batchUpdate(
+        execute_sheets_request(service.spreadsheets().values().batchUpdate(
             spreadsheetId=TARGET_SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}
-        ).execute()
+        ))
     append_rows(service, headers, appends)
     print(json.dumps({"start": (requested_start or source_start).isoformat(), "end": end.isoformat(), "source_start": source_start.isoformat(), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites, "skipped_conflicts": skipped_conflicts, "unavailable_records": [f"{key[0]} {key[2]}" for key in unavailable]}, ensure_ascii=False))
 

@@ -2,6 +2,7 @@ import importlib.util
 import unittest
 from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 MODULE = Path(__file__).resolve().parents[1] / "src" / "360_partner_sync.py"
 SPEC = importlib.util.spec_from_file_location("sync360", MODULE)
@@ -10,6 +11,49 @@ SPEC.loader.exec_module(SYNC)
 
 
 class Sync360Tests(unittest.TestCase):
+    def test_retries_transient_sheets_error_three_times(self):
+        class HttpError(Exception):
+            def __init__(self, response):
+                self.resp = response
+
+        response = type("Response", (), {"status": 503, "reason": "Service Unavailable"})()
+
+        class Request:
+            calls = 0
+
+            def execute(self):
+                self.calls += 1
+                if self.calls < 4:
+                    raise HttpError(response)
+                return {"values": [["ok"]]}
+
+        request = Request()
+        with patch.object(SYNC.time, "sleep") as sleep:
+            self.assertEqual(SYNC.execute_sheets_request(request, HttpError), {"values": [["ok"]]})
+        self.assertEqual(request.calls, 4)
+        self.assertEqual(sleep.call_args_list, [((3,),), ((3,),), ((3,),)])
+
+    def test_does_not_retry_non_transient_sheets_error(self):
+        class HttpError(Exception):
+            def __init__(self, response):
+                self.resp = response
+
+        response = type("Response", (), {"status": 403, "reason": "Forbidden"})()
+
+        class Request:
+            calls = 0
+
+            def execute(self):
+                self.calls += 1
+                raise HttpError(response)
+
+        request = Request()
+        with patch.object(SYNC.time, "sleep") as sleep:
+            with self.assertRaises(HttpError):
+                SYNC.execute_sheets_request(request, HttpError)
+        self.assertEqual(request.calls, 1)
+        sleep.assert_not_called()
+
     def test_parses_document_radar_source_header_and_skips_summary(self):
         values = [
             ["日期", "360-1", "360-2", "360-3", "360-5"],
