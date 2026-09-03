@@ -49,12 +49,14 @@ class AvastCountrySyncTests(unittest.TestCase):
 
     def test_applies_matching_country_and_operation_price(self):
         source = {(date(2026, 8, 24), "US", "avast换量弹窗"): {"new": 4}}
-        priced = SYNC.apply_prices(source, {("US", "换量弹窗"): 1.8})
+        priced, missing = SYNC.apply_prices(source, {("US", "换量弹窗"): 1.8})
+        self.assertEqual(missing, [])
         self.assertEqual(priced, {(date(2026, 8, 24), "US", "avast换量弹窗"): {"new": 4, "blood": 7.2}})
 
-    def test_refuses_missing_price(self):
-        with self.assertRaisesRegex(RuntimeError, "missing Avast partner price"):
-            SYNC.apply_prices({(date(2026, 8, 24), "US", "avast文档雷达"): {"new": 4}}, {})
+    def test_keeps_new_users_when_price_is_missing(self):
+        priced, missing = SYNC.apply_prices({(date(2026, 8, 24), "US", "avast文档雷达"): {"new": 4}}, {})
+        self.assertEqual(priced, {(date(2026, 8, 24), "US", "avast文档雷达"): {"new": 4}})
+        self.assertEqual(missing, ["2026-08-24 US/文档雷达"])
     def test_accepts_only_the_requested_mailbox_sender_and_subject_prefix(self):
         self.assertEqual(SYNC.MAILBOX, "54lingbai@gmail.com")
         self.assertEqual(SYNC.SENDER, "online.acquisition@avast.com")

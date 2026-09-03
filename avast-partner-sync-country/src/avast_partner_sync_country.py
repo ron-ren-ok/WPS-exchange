@@ -162,13 +162,13 @@ def apply_prices(source, prices):
     for (day, country, operation), metrics in source.items():
         price_operation = PRICE_OPERATIONS[operation]
         price = prices.get((country, price_operation))
+        record = {"new": metrics["new"]}
         if price is None:
             missing.append(f"{day} {country}/{price_operation}")
-            continue
-        result[(day, country, operation)] = {"new": metrics["new"], "blood": metrics["new"] * price}
-    if missing:
-        raise RuntimeError("missing Avast partner price: " + "; ".join(sorted(missing)))
-    return result
+        else:
+            record["blood"] = metrics["new"] * price
+        result[(day, country, operation)] = record
+    return result, missing
 
 def decoded(value):
     return "".join(
@@ -252,10 +252,12 @@ def plan(headers, found, source):
     for (day, country, operation), metrics in sorted(source.items()):
         target = found.get((day, PARTNER, country, operation))
         if target is None:
-            appends.append({"日期": day, "合作方": PARTNER, "国家代码": country, "运营位": operation, "新增": metrics["new"], "血量": metrics["blood"]})
+            appends.append({"日期": day, "合作方": PARTNER, "国家代码": country, "运营位": operation, "新增": metrics["new"], "血量": metrics.get("blood", "")})
             continue
         row_no, row = target
         for header, metric in (("新增", "new"), ("血量", "blood")):
+            if metric not in metrics:
+                continue
             old, wanted = value(row, pos[header]), metrics[metric]
             if old in ("", None) or not values_match(old, wanted):
                 updates.append({"range": f"'{SHEET_NAME}'!{col(pos[header])}{row_no}", "values": [[wanted]]})
@@ -304,13 +306,13 @@ def main():
         raise RuntimeError("no verified Avast country-report CSV rows were found")
     source, start, end = latest_three_days(source, parse_day(args.end_date) if args.end_date else None)
     api = service(raw)
-    source = apply_prices(source, price_index(api))
+    source, missing_prices = apply_prices(source, price_index(api))
     headers, found = targets(api)
     updates, appends, overwrites = plan(headers, found, source)
     if updates:
         api.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
     append(api, headers, appends)
-    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "records": len(source), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
+    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "records": len(source), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites, "missing_price_records": len(missing_prices), "missing_price_examples": sorted(set(missing_prices))[:20]}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
