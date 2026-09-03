@@ -16,7 +16,9 @@ from zoneinfo import ZoneInfo
 
 SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 SHEET_NAME = "合作方新增血量分国家"
+PRICE_SHEET_NAME = "合作方价格"
 HEADERS = ("日期", "合作方", "国家代码", "运营位", "新增", "血量")
+PRICE_HEADERS = ("合作方", "国家Code", "运营位", "价格")
 PARTNER = "Avast"
 MAILBOX = "54lingbai@gmail.com"
 SENDER = "online.acquisition@avast.com"
@@ -26,6 +28,12 @@ SURFACES = {
     "mmm_wps_ppi_008_595_a": "avast换量弹窗",
     "mmm_wps_ppi_008_595_e": "avast文档雷达",
     "mmm_wps_ppi_008_595_c": "avast卸载后弹出H5",
+}
+PRICE_OPERATIONS = {
+    "avast气泡": "气泡",
+    "avast换量弹窗": "换量弹窗",
+    "avast文档雷达": "文档雷达",
+    "avast卸载后弹出H5": "卸载后弹出H5",
 }
 ALIASES = {
     "date": {"date", "day", "reportdate"},
@@ -64,10 +72,10 @@ def norm(value):
     return re.sub(r"[^a-z0-9]+", "", str(value).strip().lower())
 
 
-def resolve_fields(row, require_campaign=True):
+def resolve_fields(row, require_campaign=True, require_blood=True):
     available = {norm(header): header for header in row if header not in (None, "")}
     fields = {key: next((available[alias] for alias in aliases if alias in available), None) for key, aliases in ALIASES.items()}
-    missing = [key for key, value in fields.items() if value is None and (require_campaign or key != "campaign")]
+    missing = [key for key, value in fields.items() if value is None and not ((key == "campaign" and not require_campaign) or (key == "blood" and not require_blood))]
     if missing:
         raise RuntimeError("Avast CSV missing required columns: " + ", ".join(missing) + "; available columns: " + ", ".join(str(header) for header in row if header))
     return fields
@@ -96,7 +104,7 @@ def campaign_column(rows, fields):
 
 def parse_report(raw):
     rows = csv_rows(raw)
-    fields = resolve_fields(rows[0], require_campaign=False)
+    fields = resolve_fields(rows[0], require_campaign=False, require_blood=False)
     fields["campaign"] = campaign_column(rows, fields)
     output = {}
     for row in rows:
@@ -108,9 +116,8 @@ def parse_report(raw):
         country = str(row[fields["country"]] or "").strip().upper()
         if not re.fullmatch(r"[A-Z]{2}", country):
             raise RuntimeError(f"invalid Avast country code: {country!r}")
-        metrics = output.setdefault((day, country, operation), {"new": 0, "blood": 0})
+        metrics = output.setdefault((day, country, operation), {"new": 0})
         metrics["new"] += number(row[fields["new"]])
-        metrics["blood"] += number(row[fields["blood"]])
     return output
 
 
@@ -122,6 +129,44 @@ def latest_three_days(source, end=None):
     start = anchor - timedelta(days=2)
     return {(day, country, operation): metrics for (day, country, operation), metrics in source.items() if start <= day <= anchor}, start, anchor
 
+
+def price_index(api):
+    rows = api.spreadsheets().values().get(
+        spreadsheetId=SHEET_ID,
+        range=f"'{PRICE_SHEET_NAME}'!A1:H10000",
+        valueRenderOption="UNFORMATTED_VALUE",
+    ).execute().get("values", [])
+    if not rows or len(rows[0]) != len(set(rows[0])) or any(header not in rows[0] for header in PRICE_HEADERS):
+        raise RuntimeError("partner-price headers are missing or duplicated")
+    positions = {header: rows[0].index(header) for header in PRICE_HEADERS}
+    prices = {}
+    for row in rows[1:]:
+        if str(value(row, positions["合作方"])).strip() != PARTNER:
+            continue
+        country = str(value(row, positions["国家Code"])).strip().upper()
+        operation = str(value(row, positions["运营位"])).strip()
+        raw_price = value(row, positions["价格"])
+        if not country or not operation or raw_price in ("", None):
+            continue
+        key = (country, operation)
+        if key in prices:
+            raise RuntimeError(f"duplicate Avast partner price: {country}/{operation}")
+        prices[key] = number(raw_price)
+    return prices
+
+
+def apply_prices(source, prices):
+    result, missing = {}, []
+    for (day, country, operation), metrics in source.items():
+        price_operation = PRICE_OPERATIONS[operation]
+        price = prices.get((country, price_operation))
+        if price is None:
+            missing.append(f"{day} {country}/{price_operation}")
+            continue
+        result[(day, country, operation)] = {"new": metrics["new"], "blood": metrics["new"] * price}
+    if missing:
+        raise RuntimeError("missing Avast partner price: " + "; ".join(sorted(missing)))
+    return result
 
 def decoded(value):
     return "".join(

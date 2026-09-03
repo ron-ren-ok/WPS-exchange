@@ -22,10 +22,10 @@ class AvastCountrySyncTests(unittest.TestCase):
             "2026-08-24,ignored,US,99,99\n"
         ).encode()
         rows = SYNC.parse_report(raw)
-        self.assertEqual(rows[(date(2026, 8, 23), "DE", "avast气泡")], {"new": 12, "blood": 6})
-        self.assertEqual(rows[(date(2026, 8, 24), "US", "avast换量弹窗")], {"new": 4, "blood": 2.5})
-        self.assertEqual(rows[(date(2026, 8, 24), "BR", "avast文档雷达")], {"new": 6, "blood": 3})
-        self.assertEqual(rows[(date(2026, 8, 24), "IT", "avast卸载后弹出H5")], {"new": 8, "blood": 4})
+        self.assertEqual(rows[(date(2026, 8, 23), "DE", "avast气泡")], {"new": 12})
+        self.assertEqual(rows[(date(2026, 8, 24), "US", "avast换量弹窗")], {"new": 4})
+        self.assertEqual(rows[(date(2026, 8, 24), "BR", "avast文档雷达")], {"new": 6})
+        self.assertEqual(rows[(date(2026, 8, 24), "IT", "avast卸载后弹出H5")], {"new": 8})
     def test_finds_campaign_column_by_the_requested_ids_and_uses_latest_data_day(self):
         raw = (
             "Date,Sub ID,Country Code,Install Count,Total Revenue\n"
@@ -46,6 +46,14 @@ class AvastCountrySyncTests(unittest.TestCase):
         self.assertEqual(len(updates), 2)
         self.assertEqual(len(overwrites), 2)
 
+    def test_applies_matching_country_and_operation_price(self):
+        source = {(date(2026, 8, 24), "US", "avast换量弹窗"): {"new": 4}}
+        priced = SYNC.apply_prices(source, {("US", "换量弹窗"): 1.8})
+        self.assertEqual(priced, {(date(2026, 8, 24), "US", "avast换量弹窗"): {"new": 4, "blood": 7.2}})
+
+    def test_refuses_missing_price(self):
+        with self.assertRaisesRegex(RuntimeError, "missing Avast partner price"):
+            SYNC.apply_prices({(date(2026, 8, 24), "US", "avast文档雷达"): {"new": 4}}, {})
     def test_accepts_only_the_requested_mailbox_sender_and_subject_prefix(self):
         self.assertEqual(SYNC.MAILBOX, "54lingbai@gmail.com")
         self.assertEqual(SYNC.SENDER, "online.acquisition@avast.com")
