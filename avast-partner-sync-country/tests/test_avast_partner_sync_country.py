@@ -19,6 +19,7 @@ class AvastCountrySyncTests(unittest.TestCase):
             "2026-08-24,mmm_wps_ppi_008_595_a,US,4,2.5\n"
             "2026-08-24,mmm_wps_ppi_008_595_e,BR,6,3\n"
             "2026-08-24,mmm_wps_ppi_008_595_c,IT,8,4\n"
+            "2026-08-24,mmm_wps_ppi_008_595_b,,999,999\n"
             "2026-08-24,ignored,US,99,99\n"
         ).encode()
         rows = SYNC.parse_report(raw)

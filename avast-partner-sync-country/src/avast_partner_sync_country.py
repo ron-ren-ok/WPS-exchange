@@ -114,6 +114,8 @@ def parse_report(raw):
             continue
         day = parse_day(row[fields["date"]])
         country = str(row[fields["country"]] or "").strip().upper()
+        if not country:
+            continue
         if not re.fullmatch(r"[A-Z]{2}", country):
             raise RuntimeError(f"invalid Avast country code: {country!r}")
         metrics = output.setdefault((day, country, operation), {"new": 0})
