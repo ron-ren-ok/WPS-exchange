@@ -304,6 +304,7 @@ def main():
         raise RuntimeError("no verified Avast country-report CSV rows were found")
     source, start, end = latest_three_days(source, parse_day(args.end_date) if args.end_date else None)
     api = service(raw)
+    source = apply_prices(source, price_index(api))
     headers, found = targets(api)
     updates, appends, overwrites = plan(headers, found, source)
     if updates:
