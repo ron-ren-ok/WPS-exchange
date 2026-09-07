@@ -257,16 +257,17 @@ def majority_anomaly_message(
     lines = [
         f"{current_date} {rule.label}：{len(affected_alerts)}/{comparable} 个可比较合作方同时异常{direction}"
     ]
+    direction_symbol = "↑" if direction == "上涨" else "↓"
     for alert in affected_alerts:
         lines.append(
             "\n\n".join([
+                f"  - **{alert.partner}｜{rule.label} {direction_symbol}**",
                 (
-                    f"  - {alert.partner}：当前（{alert.current_date}）{format_value(alert.current, rule.percent)}；"
-                    f"上周同日（{alert.baseline_date}）{format_value(alert.baseline, rule.percent)}；"
-                    f"绝对值 {format_difference(alert.difference, rule.percent)}；"
-                    f"环比 {format_relative(alert.relative_change)}"
+                    f"    {format_value(alert.current, rule.percent)} ← {format_value(alert.baseline, rule.percent)}｜"
+                    f"{format_difference(alert.difference, rule.percent)}（{format_relative(alert.relative_change)}）"
                 ),
-                f"    近6周同周期趋势：{alert.trend}",
+                "    近6周",
+                f"    {alert.trend}",
             ])
         )
     return "\n\n".join(lines)

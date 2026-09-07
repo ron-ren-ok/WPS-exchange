@@ -62,14 +62,17 @@ class PartnerHealthAlertTests(unittest.TestCase):
         _, alerts, anomalies = MODULE.analyze(rows, date(2026, 8, 24))
         self.assertFalse(any(alert.metric == "new_users" for alert in alerts))
         anomaly = next(item for item in anomalies if "2/3 个可比较合作方同时异常上涨" in item)
-        self.assertIn("A：当前（2026-08-23）1,300；上周同日（2026-08-16）1,000；绝对值 +300；环比 +30.0%", anomaly)
-        self.assertIn("B：当前（2026-08-23）1,400；上周同日（2026-08-16）1,000；绝对值 +400；环比 +40.0%", anomaly)
-        self.assertNotIn("C：当前", anomaly)
-        self.assertEqual(anomaly.count("近6周同周期趋势："), 2)
+        self.assertIn("**A｜新增 ↑**", anomaly)
+        self.assertIn("1,300 ← 1,000｜+300（+30.0%）", anomaly)
+        self.assertIn("**B｜新增 ↑**", anomaly)
+        self.assertIn("1,400 ← 1,000｜+400（+40.0%）", anomaly)
+        self.assertNotIn("**C｜新增", anomaly)
+        self.assertNotIn("当前（", anomaly)
+        self.assertEqual(anomaly.count("近6周"), 2)
         markdown = MODULE.alert_markdown({"new_users": date(2026, 8, 23)}, [], anomalies)
         self.assertIn("\n\n- 2026-08-23 新增：2/3 个可比较合作方同时异常上涨", markdown)
-        self.assertIn("\n\n  - A：当前", markdown)
-        self.assertIn("\n\n    近6周同周期趋势：", markdown)
+        self.assertIn("\n\n  - **A｜新增 ↑**", markdown)
+        self.assertIn("\n\n    1,300 ← 1,000｜+300（+30.0%）\n\n    近6周\n\n    缺失×4 ｜ 1,000 ↑ 1,300", markdown)
 
     def test_majority_anomaly_includes_continuing_abnormal_partner_details(self):
         rows = [
@@ -81,8 +84,8 @@ class PartnerHealthAlertTests(unittest.TestCase):
         _, alerts, anomalies = MODULE.analyze(rows, date(2026, 8, 24))
         anomaly = next(item for item in anomalies if "2/3 个可比较合作方同时异常上涨" in item)
         self.assertEqual(alerts, [])
-        self.assertIn("A：当前", anomaly)
-        self.assertIn("B：当前", anomaly)
+        self.assertIn("**A｜新增 ↑**", anomaly)
+        self.assertIn("**B｜新增 ↑**", anomaly)
 
     def test_terabox_latest_values_do_not_trigger(self):
         rows = [
