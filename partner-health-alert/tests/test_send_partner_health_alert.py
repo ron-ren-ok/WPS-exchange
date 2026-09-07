@@ -69,7 +69,7 @@ class PartnerHealthAlertTests(unittest.TestCase):
         markdown = MODULE.alert_markdown({"new_users": date(2026, 8, 23)}, [], anomalies)
         self.assertIn("\n\n- 2026-08-23 新增：2/3 个可比较合作方同时异常上涨", markdown)
         self.assertIn("\n\n  - A：当前", markdown)
-        self.assertIn("\n    近3个月同周期趋势：", markdown)
+        self.assertIn("\n\n    近3个月同周期趋势：", markdown)
 
     def test_majority_anomaly_includes_continuing_abnormal_partner_details(self):
         rows = [

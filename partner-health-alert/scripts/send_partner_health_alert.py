@@ -268,7 +268,7 @@ def majority_anomaly_message(
     ]
     for alert in affected_alerts:
         lines.append(
-            "\n".join([
+            "\n\n".join([
                 (
                     f"  - {alert.partner}：当前（{alert.current_date}）{format_value(alert.current, rule.percent)}；"
                     f"上周同日（{alert.baseline_date}）{format_value(alert.baseline, rule.percent)}；"
