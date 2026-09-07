@@ -65,11 +65,11 @@ class PartnerHealthAlertTests(unittest.TestCase):
         self.assertIn("A：当前（2026-08-23）1,300；上周同日（2026-08-16）1,000；绝对值 +300；环比 +30.0%", anomaly)
         self.assertIn("B：当前（2026-08-23）1,400；上周同日（2026-08-16）1,000；绝对值 +400；环比 +40.0%", anomaly)
         self.assertNotIn("C：当前", anomaly)
-        self.assertEqual(anomaly.count("近3个月同周期趋势："), 2)
+        self.assertEqual(anomaly.count("近6周同周期趋势："), 2)
         markdown = MODULE.alert_markdown({"new_users": date(2026, 8, 23)}, [], anomalies)
         self.assertIn("\n\n- 2026-08-23 新增：2/3 个可比较合作方同时异常上涨", markdown)
         self.assertIn("\n\n  - A：当前", markdown)
-        self.assertIn("\n\n    近3个月同周期趋势：", markdown)
+        self.assertIn("\n\n    近6周同周期趋势：", markdown)
 
     def test_majority_anomaly_includes_continuing_abnormal_partner_details(self):
         rows = [
@@ -141,7 +141,7 @@ class PartnerHealthAlertTests(unittest.TestCase):
         self.assertIn("\n\n- 当前", result)
         self.assertIn("\n\n- 上周同日", result)
         self.assertIn("\n\n- 变化：绝对值 -5.0%；环比 -25.0%", result)
-        self.assertIn("\n\n- 近3个月同周期趋势：", result)
+        self.assertIn("\n\n- 近6周同周期趋势：", result)
         self.assertNotIn("\n- 当前", result.replace("\n\n- 当前", ""))
 
 
@@ -149,16 +149,16 @@ class PartnerHealthAlertTests(unittest.TestCase):
         result = MODULE.format_trend([None, None, 0.0, 0.154, 0.147], True)
         self.assertEqual(result, "缺失×2 ｜ 0.0% ↑ 15.4% ↓ 14.7%")
 
-    def test_partner_trend_uses_three_months_of_matching_weekdays(self):
+    def test_partner_trend_uses_six_matching_weekdays(self):
         end_date = date(2026, 8, 22)
         rows = [
             data_row((end_date - timedelta(days=offset)).isoformat(), "A", new_users=float(offset))
-            for offset in range(0, 92, 7)
+            for offset in range(0, 43, 7)
         ]
         index = {(row.data_date, row.partner): row for row in rows}
         result = MODULE.partner_trend(index, "A", "new_users", end_date, False)
-        self.assertNotIn("缺失", result)
-        self.assertIn("↓", result)
+        self.assertEqual(result, "35 ↓ 28 ↓ 21 ↓ 14 ↓ 7 ↓ 0")
+        self.assertNotIn("42", result)
 
     def test_partner_trend_keeps_missing_same_period_visible(self):
         end_date = date(2026, 8, 22)

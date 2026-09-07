@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import calendar
 import json
 import math
 import os
@@ -24,6 +23,7 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=1
 DATA_RANGE = f"{SHEET_NAME}!P:Y"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 ERROR_PREFIXES = ("#REF!", "#DIV/0!", "#VALUE!", "#N/A", "#NAME?", "#NUM!", "#ERROR!")
+TREND_WEEKS = 6
 
 
 @dataclass(frozen=True)
@@ -237,23 +237,14 @@ def format_trend(values: list[float | None], percent: bool) -> str:
 def partner_trend(
     index: dict[tuple[date, str], DataRow], partner: str, metric: str, end_date: date, percent: bool
 ) -> str:
-    start_date = three_months_before(end_date)
+    start_date = end_date - timedelta(weeks=TREND_WEEKS - 1)
     values: list[float | None] = []
-    trend_date = start_date + timedelta(days=(end_date.weekday() - start_date.weekday()) % 7)
+    trend_date = start_date
     while trend_date <= end_date:
         row = index.get((trend_date, partner))
         values.append(row.values[metric] if row else None)
         trend_date += timedelta(days=7)
     return format_trend(values, percent)
-
-
-def three_months_before(value: date) -> date:
-    month = value.month - 3
-    year = value.year
-    if month <= 0:
-        month += 12
-        year -= 1
-    return date(year, month, min(value.day, calendar.monthrange(year, month)[1]))
 
 
 def majority_anomaly_message(
@@ -275,7 +266,7 @@ def majority_anomaly_message(
                     f"绝对值 {format_difference(alert.difference, rule.percent)}；"
                     f"环比 {format_relative(alert.relative_change)}"
                 ),
-                f"    近3个月同周期趋势：{alert.trend}",
+                f"    近6周同周期趋势：{alert.trend}",
             ])
         )
     return "\n\n".join(lines)
@@ -384,7 +375,7 @@ def alert_block(alert: Alert) -> str:
         f"- 当前（{alert.current_date}）：{format_value(alert.current, rule.percent)}",
         f"- 上周同日（{alert.baseline_date}）：{format_value(alert.baseline, rule.percent)}",
         f"- 变化：绝对值 {format_difference(alert.difference, rule.percent)}；环比 {format_relative(alert.relative_change)}",
-        f"- 近3个月同周期趋势：{alert.trend}",
+        f"- 近6周同周期趋势：{alert.trend}",
     ])
 
 
