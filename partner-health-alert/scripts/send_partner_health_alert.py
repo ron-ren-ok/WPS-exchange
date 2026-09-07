@@ -256,6 +256,31 @@ def three_months_before(value: date) -> date:
     return date(year, month, min(value.day, calendar.monthrange(year, month)[1]))
 
 
+def majority_anomaly_message(
+    current_date: date,
+    rule: MetricRule,
+    direction: str,
+    comparable: int,
+    affected_alerts: list[Alert],
+) -> str:
+    lines = [
+        f"{current_date} {rule.label}：{len(affected_alerts)}/{comparable} 个可比较合作方同时异常{direction}"
+    ]
+    for alert in affected_alerts:
+        lines.append(
+            "\n".join([
+                (
+                    f"  - {alert.partner}：当前（{alert.current_date}）{format_value(alert.current, rule.percent)}；"
+                    f"上周同日（{alert.baseline_date}）{format_value(alert.baseline, rule.percent)}；"
+                    f"绝对值 {format_difference(alert.difference, rule.percent)}；"
+                    f"环比 {format_relative(alert.relative_change)}"
+                ),
+                f"    近3个月同周期趋势：{alert.trend}",
+            ])
+        )
+    return "\n\n".join(lines)
+
+
 def analyze(rows: list[DataRow], today: date) -> tuple[dict[str, date], list[Alert], list[str]]:
     index = {(row.data_date, row.partner): row for row in rows}
     latest_dates: dict[str, date] = {}
@@ -292,6 +317,7 @@ def analyze(rows: list[DataRow], today: date) -> tuple[dict[str, date], list[Ale
 
         comparable = 0
         states: dict[str, str | None] = {}
+        comparisons: dict[str, Alert] = {}
         candidates: list[Alert] = []
         for partner in sorted(current_partners):
             row = index[(current_date, partner)]
@@ -307,17 +333,7 @@ def analyze(rows: list[DataRow], today: date) -> tuple[dict[str, date], list[Ale
             if direction is None:
                 continue
 
-            previous_row = index.get((previous_date, partner))
-            previous_baseline_row = index.get((previous_baseline_date, partner))
-            previous_direction = None
-            if previous_row and previous_baseline_row:
-                previous_current = previous_row.values[rule.key]
-                previous_baseline = previous_baseline_row.values[rule.key]
-                if previous_current is not None and previous_baseline is not None:
-                    previous_direction = alert_direction(previous_current, previous_baseline, rule)
-            if previous_direction == direction:
-                continue
-            candidates.append(Alert(
+            comparison = Alert(
                 partner=partner,
                 metric=rule.key,
                 direction=direction,
@@ -328,12 +344,32 @@ def analyze(rows: list[DataRow], today: date) -> tuple[dict[str, date], list[Ale
                 difference=current - baseline,
                 relative_change=relative_change(current, baseline),
                 trend=partner_trend(index, partner, rule.key, current_date, rule.percent),
-            ))
+            )
+            comparisons[partner] = comparison
+
+            previous_row = index.get((previous_date, partner))
+            previous_baseline_row = index.get((previous_baseline_date, partner))
+            previous_direction = None
+            if previous_row and previous_baseline_row:
+                previous_current = previous_row.values[rule.key]
+                previous_baseline = previous_baseline_row.values[rule.key]
+                if previous_current is not None and previous_baseline is not None:
+                    previous_direction = alert_direction(previous_current, previous_baseline, rule)
+            if previous_direction == direction:
+                continue
+            candidates.append(comparison)
 
         for direction in ("上涨", "下跌"):
-            affected = sum(state == direction for state in states.values())
+            affected_alerts = [
+                comparisons[partner]
+                for partner in sorted(comparisons)
+                if states[partner] == direction
+            ]
+            affected = len(affected_alerts)
             if comparable >= 2 and affected > comparable / 2:
-                anomalies.append(f"{current_date} {rule.label}：{affected}/{comparable} 个可比较合作方同时异常{direction}")
+                anomalies.append(majority_anomaly_message(
+                    current_date, rule, direction, comparable, affected_alerts
+                ))
                 candidates = []
                 break
         alerts.extend(candidates)

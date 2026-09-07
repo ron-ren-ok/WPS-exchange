@@ -61,7 +61,28 @@ class PartnerHealthAlertTests(unittest.TestCase):
             rows.extend([data_row("2026-08-16", partner, new_users=baseline), data_row("2026-08-23", partner, new_users=current)])
         _, alerts, anomalies = MODULE.analyze(rows, date(2026, 8, 24))
         self.assertFalse(any(alert.metric == "new_users" for alert in alerts))
-        self.assertTrue(any("2/3 个可比较合作方同时异常上涨" in item for item in anomalies))
+        anomaly = next(item for item in anomalies if "2/3 个可比较合作方同时异常上涨" in item)
+        self.assertIn("A：当前（2026-08-23）1,300；上周同日（2026-08-16）1,000；绝对值 +300；环比 +30.0%", anomaly)
+        self.assertIn("B：当前（2026-08-23）1,400；上周同日（2026-08-16）1,000；绝对值 +400；环比 +40.0%", anomaly)
+        self.assertNotIn("C：当前", anomaly)
+        self.assertEqual(anomaly.count("近3个月同周期趋势："), 2)
+        markdown = MODULE.alert_markdown({"new_users": date(2026, 8, 23)}, [], anomalies)
+        self.assertIn("\n\n- 2026-08-23 新增：2/3 个可比较合作方同时异常上涨", markdown)
+        self.assertIn("\n\n  - A：当前", markdown)
+        self.assertIn("\n    近3个月同周期趋势：", markdown)
+
+    def test_majority_anomaly_includes_continuing_abnormal_partner_details(self):
+        rows = [
+            data_row("2026-08-15", "A", new_users=1_000), data_row("2026-08-16", "A", new_users=1_000),
+            data_row("2026-08-22", "A", new_users=1_300), data_row("2026-08-23", "A", new_users=1_300),
+            data_row("2026-08-16", "B", new_users=1_000), data_row("2026-08-23", "B", new_users=1_400),
+            data_row("2026-08-16", "C", new_users=1_000), data_row("2026-08-23", "C", new_users=1_050),
+        ]
+        _, alerts, anomalies = MODULE.analyze(rows, date(2026, 8, 24))
+        anomaly = next(item for item in anomalies if "2/3 个可比较合作方同时异常上涨" in item)
+        self.assertEqual(alerts, [])
+        self.assertIn("A：当前", anomaly)
+        self.assertIn("B：当前", anomaly)
 
     def test_terabox_latest_values_do_not_trigger(self):
         rows = [
