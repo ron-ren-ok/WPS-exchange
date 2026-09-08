@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 from datetime import date
 from pathlib import Path
+from requests import HTTPError, Response
 
 MODULE = Path(__file__).resolve().parents[1] / "scripts" / "send_acquisition_progress.py"
 SPEC = importlib.util.spec_from_file_location("acquisition_progress", MODULE)
@@ -17,7 +18,29 @@ def cell(text=None, number=None):
     return result
 
 
+def http_error(status_code):
+    response = Response()
+    response.status_code = status_code
+    return HTTPError(response=response)
+
+
 class AcquisitionProgressTests(unittest.TestCase):
+    def test_request_rows_retries_503_twice_with_five_second_delays(self):
+        response = type("Response", (), {"raise_for_status": lambda self: None, "json": lambda self: {"sheets": [{"data": [{"rowData": []}]}]}})()
+        session = type("Session", (), {"get": __import__("unittest").mock.Mock(side_effect=[http_error(503), http_error(503), response])})()
+        with patch.object(REPORT.time, "sleep") as sleep:
+            self.assertEqual(REPORT.request_rows(session, "Source!A:D"), [])
+        self.assertEqual(session.get.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [__import__("unittest").mock.call(5), __import__("unittest").mock.call(5)])
+
+    def test_request_rows_does_not_retry_403(self):
+        session = type("Session", (), {"get": __import__("unittest").mock.Mock(side_effect=http_error(403))})()
+        with patch.object(REPORT.time, "sleep") as sleep:
+            with self.assertRaises(HTTPError):
+                REPORT.request_rows(session, "Source!A:D")
+        self.assertEqual(session.get.call_count, 1)
+        sleep.assert_not_called()
+
     def test_source_records_use_headers_not_fixed_columns(self):
         rows = [[cell("渠道"), cell("新增设备数"), cell("日期"), cell("近30日活跃设备数_MAD")], [cell("Affiliate"), cell(number=10000), cell(number=46225), cell(number=20000)]]
         record = REPORT.source_records(rows)[0]

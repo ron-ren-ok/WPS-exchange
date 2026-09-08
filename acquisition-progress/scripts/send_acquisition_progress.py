@@ -7,10 +7,13 @@ import argparse
 import calendar
 import json
 import os
+import time
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from pathlib import Path
+
+import requests
 
 
 SPREADSHEET_ID = "1ICqHtXnUkg2HFskJYY3e8TtLPVNzlIWK2lUzcNM_lnc"
@@ -25,6 +28,8 @@ CHANNELS = (
     {"label": "导量", "source": "安卓导PC", "target": "导量&裂变", "new_target": "导量裂变"},
     {"label": "Affiliate", "source": "Affiliate", "target": "AFF联盟", "new_target": "AFF联盟"},
 )
+MAX_SHEETS_ATTEMPTS = 3
+SHEETS_RETRY_DELAY_SECONDS = 5
 
 
 def required(name: str) -> str:
@@ -35,12 +40,22 @@ def required(name: str) -> str:
 
 
 def request_rows(session, sheet_range: str) -> list[list[dict]]:
-    response = session.get(
-        f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}",
-        params={"ranges": [sheet_range], "includeGridData": "true", "fields": "sheets(data(rowData(values(formattedValue,effectiveValue))))"},
-        timeout=30,
-    )
-    response.raise_for_status()
+    for attempt in range(MAX_SHEETS_ATTEMPTS):
+        try:
+            response = session.get(
+                f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}",
+                params={"ranges": [sheet_range], "includeGridData": "true", "fields": "sheets(data(rowData(values(formattedValue,effectiveValue))))"},
+                timeout=30,
+            )
+            response.raise_for_status()
+            break
+        except requests.exceptions.HTTPError as error:
+            status_code = error.response.status_code if error.response is not None else None
+            if status_code != 429 and (status_code is None or not 500 <= status_code < 600):
+                raise
+            if attempt == MAX_SHEETS_ATTEMPTS - 1:
+                raise
+            time.sleep(SHEETS_RETRY_DELAY_SECONDS)
     grids = [grid for sheet in response.json().get("sheets", []) for grid in sheet.get("data", [])]
     if len(grids) != 1:
         raise RuntimeError(f"Google Sheets returned {len(grids)} ranges, expected 1.")
