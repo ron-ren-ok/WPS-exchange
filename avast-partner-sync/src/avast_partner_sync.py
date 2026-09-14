@@ -52,50 +52,74 @@ def number(value):
 
 
 def parse_avast_page(page_text):
-    """Return daily records from the first PBI page, with strict Total semantics."""
-    # The first non-currency Total and its immediately following currency
-    # Total are authoritative. Their column count determines how many date
-    # headers must be recovered; Power BI may omit table labels during PDF
-    # text extraction, so labels such as Country Code/Grand Total are hints,
-    # not requirements.
-    total_pattern = r"(?im)^[^\w$\d\r\n]*(?:Grand[ \t]+)?Total[ \t]+(.+)$"
-    totals = re.findall(total_pattern, page_text)
-    new_line = next((line for line in totals if "$" not in line), None)
-    if new_line is None:
-        raise ValueError("Avast first non-$ Total was not found")
-    position = totals.index(new_line)
-    blood_line = totals[position + 1] if position + 1 < len(totals) else None
-    if not blood_line or "$" not in blood_line:
-        raise ValueError("Avast $ Total must immediately follow the non-$ Total")
-    new_values = re.findall(r"\d[\d,]*", new_line)
-    blood_values = re.findall(r"\$[\d,]+(?:\.\d+)?", blood_line)
-    if len(new_values) < 2 or len(new_values) != len(blood_values):
-        raise ValueError("Avast Total value columns are missing or inconsistent")
+    """Return available daily metrics from the first PBI page.
 
-    expected_days = len(new_values) - 1  # final value is the grand total
-    first_total = re.search(total_pattern, page_text)
-    header_region = page_text[:first_total.start()] if first_total else page_text
+    Power BI can refresh the installs and costs tables at different times.
+    Each table is therefore validated against its own date header: a valid
+    table is retained even when the corresponding metric is absent or lags.
+    """
+    total_pattern = r"(?im)^[^\w$\d\r\n]*(?:Grand[ \t]+)?Total[ \t]+(.+)$"
+    totals = list(re.finditer(total_pattern, page_text))
+    new_total = next((match for match in totals if "$" not in match.group(1)), None)
+    blood_total = next(
+        (match for match in totals if "$" in match.group(1) and (new_total is None or match.start() > new_total.start())),
+        None,
+    )
     date_token = (
         r"(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}"
         r"|\d{1,2}[./]\d{1,2}[./]\d{4}"
         r"|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}"
         r"|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})"
     )
-    found_days = re.findall(date_token, header_region, flags=re.IGNORECASE)
-    if len(found_days) < expected_days:
-        raise ValueError(
-            f"Avast page-one date header columns are missing: expected {expected_days}, found {len(found_days)}"
+
+    def parse_metric(total, header_region, pattern):
+        if total is None:
+            return {}
+        values = re.findall(pattern, total.group(1))
+        expected_days = len(values) - 1  # final value is the grand total
+        if expected_days < 1:
+            return {}
+        found_days = re.findall(date_token, header_region, flags=re.IGNORECASE)
+        if len(found_days) < expected_days:
+            return {}
+        parsed_days = [parse_day(day) for day in found_days[-expected_days:]]
+        if len(parsed_days) != len(set(parsed_days)):
+            return {}
+        return dict(zip(parsed_days, map(number, values[:-1])))
+
+    new_metrics = parse_metric(
+        new_total,
+        page_text[:new_total.start()] if new_total else "",
+        r"\d[\d,]*",
+    )
+    blood_header_region = ""
+    if blood_total:
+        blood_header_region = (
+            page_text[new_total.end():blood_total.start()]
+            if new_total
+            else page_text[:blood_total.start()]
         )
-    days = found_days[-expected_days:]
-    parsed_days = [parse_day(day) for day in days]
-    if len(parsed_days) != len(set(parsed_days)):
-        raise ValueError("Avast first-table date headers are duplicated")
-    if len(new_values) != len(parsed_days) + 1 or len(blood_values) != len(parsed_days) + 1:
-        raise ValueError("Avast Total values do not align exactly with dates")
-    return {
-        day: {"new_users": number(new), "blood_volume": number(blood)}
-        for day, new, blood in zip(parsed_days, new_values[:-1], blood_values[:-1])
-    }
+    blood_metrics = parse_metric(
+        blood_total,
+        blood_header_region,
+        r"\$[\d,]+(?:\.\d+)?",
+    )
+    # Older exports omit the repeated header before the costs Total. In that
+    # case the costs columns share the installs header rather than being bad.
+    if not blood_metrics and new_total and blood_total:
+        blood_metrics = parse_metric(
+            blood_total,
+            page_text[:new_total.start()],
+            r"\$[\d,]+(?:\.\d+)?",
+        )
+    records = {}
+    for day, value in new_metrics.items():
+        records.setdefault(day, {})["new_users"] = value
+    for day, value in blood_metrics.items():
+        records.setdefault(day, {})["blood_volume"] = value
+    if not records:
+        raise ValueError("Avast PDF contains no complete daily metric table or date header")
+    return records
 
 def pdf_rows(raw_pdf):
     with pdfplumber.open(io.BytesIO(raw_pdf)) as pdf:
@@ -255,9 +279,11 @@ def plan_writes(headers, existing_rows, sources, allow_overwrite):
         for day, metrics in sorted(source.items()):
             row = existing_rows.get((day, PARTNER, operation))
             if row is None:
-                appends.append({"日期": day, "合作方": PARTNER, "运营位": operation, "新增": metrics["new_users"], "血量": metrics["blood_volume"]})
+                appends.append({"日期": day, "合作方": PARTNER, "运营位": operation, "新增": metrics.get("new_users", ""), "血量": metrics.get("blood_volume", "")})
                 continue
             for header, metric in (("新增", "new_users"), ("血量", "blood_volume")):
+                if metric not in metrics:
+                    continue
                 current, wanted = value_at(row, positions[header]), metrics[metric]
                 if current in ("", None):
                     updates.append({"range": f"'{SHEET_NAME}'!{col_name(positions[header])}{row['row']}", "values": [[wanted]]})

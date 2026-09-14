@@ -46,10 +46,22 @@ class AvastTests(unittest.TestCase):
             AVAST.parse_avast_page(decorated)[date(2026, 7, 15)]["blood_volume"],
             173,
         )
-    def test_rejects_reordered_totals(self):
-        bad = PAGE.replace("Total 178 173 351\nTotal $178 $173 $351", "Total $178 $173 $351\nTotal 178 173 351")
-        with self.assertRaisesRegex(ValueError, "immediately follow"):
-            AVAST.parse_avast_page(bad)
+    def test_keeps_complete_metrics_when_the_tables_have_different_cutoffs(self):
+        partial = PAGE.replace(
+            "Total $178 $173 $351",
+            "Country Code 2026-07-14 Grand Total\nTotal $178 $178",
+        )
+        self.assertEqual(AVAST.parse_avast_page(partial), {
+            date(2026, 7, 14): {"new_users": 178, "blood_volume": 178},
+            date(2026, 7, 15): {"new_users": 173},
+        })
+
+    def test_keeps_new_users_when_the_blood_table_is_absent(self):
+        only_new = PAGE.replace("Total $178 $173 $351\n", "")
+        self.assertEqual(AVAST.parse_avast_page(only_new), {
+            date(2026, 7, 14): {"new_users": 178},
+            date(2026, 7, 15): {"new_users": 173},
+        })
 
     def test_accepts_repeated_country_headers_for_two_pbi_tables(self):
         repeated = PAGE.replace(
@@ -125,6 +137,20 @@ class AvastTests(unittest.TestCase):
             "新增": 12,
             "血量": 3.5,
         }])
+
+    def test_plans_partial_metric_without_overwriting_the_other_cell(self):
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        key = (date(2026, 7, 21), "Avast", "气泡")
+        rows = {key: {"row": 99, "values": [46224, "Avast", "气泡", "", 2]}}
+        updates, appends, overwrites = AVAST.plan_writes(
+            headers,
+            rows,
+            {"bubble": {date(2026, 7, 21): {"new_users": 11}}},
+            allow_overwrite=False,
+        )
+        self.assertEqual(appends, [])
+        self.assertEqual(overwrites, [])
+        self.assertEqual(updates, [{"range": "'合作方新增血量'!D99", "values": [[11]]}])
 
     def test_maps_e_report_to_document_radar(self):
         spec = AVAST.SURFACES["document_radar"]
