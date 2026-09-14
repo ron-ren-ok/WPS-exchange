@@ -46,22 +46,18 @@ class AvastTests(unittest.TestCase):
             AVAST.parse_avast_page(decorated)[date(2026, 7, 15)]["blood_volume"],
             173,
         )
-    def test_keeps_complete_metrics_when_the_tables_have_different_cutoffs(self):
+    def test_skips_dates_when_the_tables_have_different_cutoffs(self):
         partial = PAGE.replace(
             "Total $178 $173 $351",
             "Country Code 2026-07-14 Grand Total\nTotal $178 $178",
         )
         self.assertEqual(AVAST.parse_avast_page(partial), {
             date(2026, 7, 14): {"new_users": 178, "blood_volume": 178},
-            date(2026, 7, 15): {"new_users": 173},
         })
 
-    def test_keeps_new_users_when_the_blood_table_is_absent(self):
+    def test_skips_report_when_the_blood_table_is_absent(self):
         only_new = PAGE.replace("Total $178 $173 $351\n", "")
-        self.assertEqual(AVAST.parse_avast_page(only_new), {
-            date(2026, 7, 14): {"new_users": 178},
-            date(2026, 7, 15): {"new_users": 173},
-        })
+        self.assertEqual(AVAST.parse_avast_page(only_new), {})
 
     def test_accepts_repeated_country_headers_for_two_pbi_tables(self):
         repeated = PAGE.replace(
@@ -116,10 +112,9 @@ class AvastTests(unittest.TestCase):
             date(2026, 7, 14),
             date(2026, 7, 15),
         })
-    def test_rejects_page_without_date_header(self):
+    def test_skips_page_without_date_header(self):
         bad = PAGE.replace("Country Code 2026-07-14 2026-07-15 Grand Total\n", "")
-        with self.assertRaisesRegex(ValueError, "date header"):
-            AVAST.parse_avast_page(bad)
+        self.assertEqual(AVAST.parse_avast_page(bad), {})
     def test_plans_append_for_new_h5_long_format_record(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
         updates, appends, overwrites = AVAST.plan_writes(
@@ -138,7 +133,7 @@ class AvastTests(unittest.TestCase):
             "血量": 3.5,
         }])
 
-    def test_plans_partial_metric_without_overwriting_the_other_cell(self):
+    def test_skips_partial_metric_without_writing_any_cell(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
         key = (date(2026, 7, 21), "Avast", "气泡")
         rows = {key: {"row": 99, "values": [46224, "Avast", "气泡", "", 2]}}
@@ -150,7 +145,7 @@ class AvastTests(unittest.TestCase):
         )
         self.assertEqual(appends, [])
         self.assertEqual(overwrites, [])
-        self.assertEqual(updates, [{"range": "'合作方新增血量'!D99", "values": [[11]]}])
+        self.assertEqual(updates, [])
 
     def test_maps_e_report_to_document_radar(self):
         spec = AVAST.SURFACES["document_radar"]

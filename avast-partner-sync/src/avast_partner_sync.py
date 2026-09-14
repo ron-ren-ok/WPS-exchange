@@ -112,14 +112,12 @@ def parse_avast_page(page_text):
             page_text[:new_total.start()],
             r"\$[\d,]+(?:\.\d+)?",
         )
-    records = {}
-    for day, value in new_metrics.items():
-        records.setdefault(day, {})["new_users"] = value
-    for day, value in blood_metrics.items():
-        records.setdefault(day, {})["blood_volume"] = value
-    if not records:
-        raise ValueError("Avast PDF contains no complete daily metric table or date header")
-    return records
+    # A date is usable only when the report contains both metrics for that
+    # date. Do not append a partially refreshed day and backfill it later.
+    return {
+        day: {"new_users": new_metrics[day], "blood_volume": blood_metrics[day]}
+        for day in new_metrics.keys() & blood_metrics.keys()
+    }
 
 def pdf_rows(raw_pdf):
     with pdfplumber.open(io.BytesIO(raw_pdf)) as pdf:
@@ -277,13 +275,13 @@ def plan_writes(headers, existing_rows, sources, allow_overwrite):
     for surface, source in sources.items():
         operation = SURFACES[surface]["operation"]
         for day, metrics in sorted(source.items()):
+            if set(metrics) != {"new_users", "blood_volume"}:
+                continue
             row = existing_rows.get((day, PARTNER, operation))
             if row is None:
-                appends.append({"日期": day, "合作方": PARTNER, "运营位": operation, "新增": metrics.get("new_users", ""), "血量": metrics.get("blood_volume", "")})
+                appends.append({"日期": day, "合作方": PARTNER, "运营位": operation, "新增": metrics["new_users"], "血量": metrics["blood_volume"]})
                 continue
             for header, metric in (("新增", "new_users"), ("血量", "blood_volume")):
-                if metric not in metrics:
-                    continue
                 current, wanted = value_at(row, positions[header]), metrics[metric]
                 if current in ("", None):
                     updates.append({"range": f"'{SHEET_NAME}'!{col_name(positions[header])}{row['row']}", "values": [[wanted]]})
