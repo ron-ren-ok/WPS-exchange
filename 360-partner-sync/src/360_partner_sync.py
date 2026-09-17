@@ -21,6 +21,8 @@ SURFACES = {
     "360-4": "卸载引导",
     "360-5": "文档雷达",
 }
+# The 360-4 source uses zero to signal an unreported day rather than a real zero.
+ZERO_AS_UNREPORTED_HEADERS = frozenset(("360-4",))
 
 
 def execute_sheets_request(request, http_error=None):
@@ -112,7 +114,8 @@ def source_records(values, start, end):
         for header, operation in SURFACES.items():
             raw = row[indexes[header]] if len(row) > indexes[header] else ""
             new_users = number(raw)
-            if new_users is not None:  # Blank means not reported; zero is a valid report.
+            if new_users is not None and not (header in ZERO_AS_UNREPORTED_HEADERS and new_users == 0):
+                # Blank means not reported. Zero is valid except for source headers listed above.
                 key = (day, PARTNER, operation)
                 if key in records:
                     raise RuntimeError(f"duplicate 360 source record: {key}")

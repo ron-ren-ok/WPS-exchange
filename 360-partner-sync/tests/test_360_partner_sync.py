@@ -81,6 +81,12 @@ class Sync360Tests(unittest.TestCase):
         }
         self.assertEqual(set(records), required - {(date(2026, 7, 8), "360", "卸载后引导H5")})
 
+    def test_skips_zero_for_360_4_but_keeps_zero_for_other_surfaces(self):
+        values = [["日期", "360-1", "360-2", "360-3", "360-4", "360-5"], ["2026-09-03", 0, 20, 3, 0, 5]]
+        records = SYNC.source_records(values, date(2026, 9, 3), date(2026, 9, 3))
+        self.assertEqual(records[(date(2026, 9, 3), "360", "换量弹窗")]["new_users"], 0)
+        self.assertNotIn((date(2026, 9, 3), "360", "卸载引导"), records)
+
     def test_plans_append_without_writing_blood_volume(self):
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
         updates, appends, overwrites, skipped_conflicts = SYNC.plan_writes(
