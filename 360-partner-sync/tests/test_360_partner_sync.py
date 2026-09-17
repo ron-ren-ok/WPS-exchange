@@ -54,27 +54,29 @@ class Sync360Tests(unittest.TestCase):
         self.assertEqual(request.calls, 1)
         sleep.assert_not_called()
 
-    def test_parses_document_radar_source_header_and_skips_summary(self):
+    def test_parses_all_source_headers_including_e_column_uninstall_guide_and_skips_summary(self):
         values = [
-            ["日期", "360-1", "360-2", "360-3", "360-5"],
-            ["汇总", 100, 200, 3, 5],
-            ["2026-07-14", 10, 20, 3, 5],
-            ["2026-07-15", 0, "", 4, 6],
+            ["日期", "360-1", "360-2", "360-3", "360-4", "360-5"],
+            ["汇总", 100, 200, 3, 4, 5],
+            ["2026-07-14", 10, 20, 3, 4, 5],
+            ["2026-07-15", 0, "", 4, 5, 6],
         ]
         records = SYNC.source_records(values, date(2026, 7, 14), date(2026, 7, 15))
         self.assertEqual(records[(date(2026, 7, 14), "360", "换量弹窗")]["new_users"], 10)
         self.assertEqual(records[(date(2026, 7, 14), "360", "气泡")]["new_users"], 20)
+        self.assertEqual(records[(date(2026, 7, 14), "360", "卸载引导")]["new_users"], 4)
         self.assertEqual(records[(date(2026, 7, 14), "360", "文档雷达")]["new_users"], 5)
         self.assertEqual(records[(date(2026, 7, 15), "360", "换量弹窗")]["new_users"], 0)
         self.assertNotIn((date(2026, 7, 15), "360", "气泡"), records)
 
     def test_keeps_available_source_records_when_some_metrics_are_blank(self):
-        values = [["日期", "360-1", "360-2", "360-3", "360-5"], ["2026-07-08", 10, 20, "", 7]]
+        values = [["日期", "360-1", "360-2", "360-3", "360-4", "360-5"], ["2026-07-08", 10, 20, "", 4, 7]]
         records = SYNC.source_records(values, date(2026, 7, 8), date(2026, 7, 8))
         required = {
             (date(2026, 7, 8), "360", "换量弹窗"),
             (date(2026, 7, 8), "360", "气泡"),
             (date(2026, 7, 8), "360", "卸载后引导H5"),
+            (date(2026, 7, 8), "360", "卸载引导"),
             (date(2026, 7, 8), "360", "文档雷达"),
         }
         self.assertEqual(set(records), required - {(date(2026, 7, 8), "360", "卸载后引导H5")})
@@ -118,6 +120,7 @@ class Sync360Tests(unittest.TestCase):
         self.assertEqual(SYNC.missing_keys(headers, existing, day, day, explicit_start=day), {
             (day, "360", "气泡"),
             (day, "360", "卸载后引导H5"),
+            (day, "360", "卸载引导"),
             (day, "360", "文档雷达"),
         })
 
@@ -131,6 +134,7 @@ class Sync360Tests(unittest.TestCase):
         missing = SYNC.missing_keys(headers, existing, old, end)
         self.assertNotIn((old + timedelta(days=1), "360", "卸载后引导H5"), missing)
         self.assertIn((end - timedelta(days=13), "360", "卸载后引导H5"), missing)
+        self.assertIn((end - timedelta(days=13), "360", "卸载引导"), missing)
         self.assertIn((end - timedelta(days=13), "360", "文档雷达"), missing)
         self.assertIn((end, "360", "换量弹窗"), missing)
         self.assertIn((end, "360", "气泡"), missing)
