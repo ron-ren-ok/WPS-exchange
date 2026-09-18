@@ -15,9 +15,9 @@ from bs4 import BeautifulSoup
 
 SHEET_ID = "1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"
 SHEET_NAME = "合作方新增血量"
-LOGIN_URL = "https://trk.entiretrack.com/trackingassistant/"
-REPORT_URL = "https://trk.entiretrack.com/trackingassistant/viewdailyinstallinfo.aspx"
-EXPAND_URL = "https://trk.entiretrack.com/trackingassistant/ajax/fetchDailyInstallinfo.aspx"
+LOGIN_URL = "https://innovana.in/trackingassistant/"
+REPORT_URL = "https://innovana.in/trackingassistant/viewdailyinstallinfo.aspx"
+EXPAND_URL = "https://innovana.in/trackingassistant/ajax/fetchDailyInstallinfo.aspx"
 HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
 PARTNER = "Winriser"
 SOURCE_TO_OPERATION = {
