@@ -40,7 +40,7 @@ LEGACY_REQUIRED_CHANNELS = ("三方换量", "安卓导PC", "Affiliate")
 REPORT_SECTIONS = {
     "overall": ("整体",),
     "partner": ("三方合作", "Affiliate"),
-    "other": ("安卓导PC", "SEM", "官网", "其他", "微软商店", "SEO", "Mac"),
+    "other": ("安卓导PC", "SEM", "官网", "微软商店", "SEO", "Mac", "其他"),
 }
 MAX_SHEETS_ATTEMPTS = 3
 SHEETS_RETRY_DELAY_SECONDS = 5

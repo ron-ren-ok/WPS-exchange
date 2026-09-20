@@ -159,6 +159,7 @@ class AcquisitionProgressTests(unittest.TestCase):
         self.assertNotIn("**➡️整体**", partner)
         self.assertIn("**➡️Mac**", other)
         self.assertNotIn("**➡️Affiliate**", other)
+        self.assertLess(other.index("**➡️Mac**"), other.index("**➡️其他**"))
 
 
     def test_subtitle_includes_send_date_and_elapsed_month_progress(self):
