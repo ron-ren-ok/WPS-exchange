@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the daily acquisition, partner, and affiliate progress card from Google Sheets."""
+"""Build the daily user-growth KPI card from Google Sheets."""
 
 from __future__ import annotations
 
@@ -23,11 +23,20 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 UNIT_DIVISOR = 10_000
 REQUIRED_SOURCE_HEADERS = ("日期", "渠道", "新增设备数", "近30日活跃设备数_MAD")
-CHANNELS = (
-    {"label": "三方", "source": "三方换量", "target": "三方合作", "new_target": "第三方"},
-    {"label": "导量", "source": "安卓导PC", "target": "导量&裂变", "new_target": "导量裂变"},
-    {"label": "Affiliate", "source": "Affiliate", "target": "AFF联盟", "new_target": "AFF联盟"},
-)
+# Kept only for target-name compatibility while the sheet transitions from the
+# original three groups to the full growth-channel matrix.  Every source channel
+# is reported; this map is not a list of channels to include.
+TARGET_ALIASES = {
+    "三方换量": ("三方合作", "第三方"),
+    "三方合作": ("第三方",),
+    "安卓导PC": ("导量&裂变", "导量裂变"),
+    "Affiliate": ("AFF联盟",),
+    "整体": ("总计",),
+}
+# Retain the original three-source completeness guard during the source-table
+# migration.  Other channels are added to this check as soon as they appear in
+# the live source data.
+LEGACY_REQUIRED_CHANNELS = ("三方换量", "安卓导PC", "Affiliate")
 MAX_SHEETS_ATTEMPTS = 3
 SHEETS_RETRY_DELAY_SECONDS = 5
 
@@ -69,7 +78,7 @@ def read_data() -> tuple[list[list[dict]], list[list[dict]]]:
     info = json.loads(required("GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"))
     credentials = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     session = google.auth.transport.requests.AuthorizedSession(credentials)
-    return request_rows(session, f"{SOURCE_SHEET}!A:D"), request_rows(session, f"{TARGET_SHEET}!A1:J40")
+    return request_rows(session, f"{SOURCE_SHEET}!A:D"), request_rows(session, f"{TARGET_SHEET}!A1:Z200")
 
 
 def cell_text(row: list[dict], index: int) -> str:
@@ -114,6 +123,12 @@ def source_records(rows: list[list[dict]]) -> list[dict]:
 
 
 def target_config(rows: list[list[dict]], month: int) -> dict[str, dict[str, float]]:
+    """Read any 2026 target columns grouped by MAU/新增.
+
+    The target sheet uses a group-name row immediately above a ``Month`` row.
+    This deliberately derives the channel set from those headers, rather than
+    retaining a second hard-coded list in the workflow.
+    """
     sections = {"MAU": {}, "新增": {}}
     section = None
     for index, row in enumerate(rows):
@@ -129,18 +144,29 @@ def target_config(rows: list[list[dict]], month: int) -> dict[str, dict[str, flo
             for column in range(1, len(target_headers)):
                 if cell_text(target_headers, column) != "2026-目标":
                     continue
-                group = cell_text(groups, column - 1) or cell_text(groups, column)
+                group = cell_text(groups, column) or cell_text(groups, column - 1)
                 value = number(target_row[column] if len(target_row) > column else None)
                 if group and value is not None:
                     sections[section][group] = value
             section = None
-    if not sections["MAU"] or not sections["新增"]:
+    if not sections["MAU"] and not sections["新增"]:
         raise RuntimeError(f"{TARGET_SHEET} target sections could not be parsed.")
     return sections
 
 
+def report_channels(records: list[dict], targets: dict[str, dict[str, float]] | None = None) -> list[str]:
+    """Return the source and target channel dimensions, with total first."""
+    channels = sorted({record["channel"] for record in records})
+    if targets:
+        channels = sorted(set(channels) | set(targets["MAU"]) | set(targets["新增"]))
+    return (["整体"] if "整体" in channels else []) + [channel for channel in channels if channel != "整体"]
+
+
 def missing_data_notice(records: list[dict], expected_date: date) -> str | None:
-    expected_channels = {config["source"] for config in CHANNELS}
+    live_channels = report_channels(records)
+    expected_channels = set(live_channels)
+    if "三方换量" in expected_channels:
+        expected_channels.update(LEGACY_REQUIRED_CHANNELS)
     relevant = [record for record in records if record["date"] <= expected_date and record["channel"] in expected_channels]
     if not relevant:
         return f"注意：{expected_date.month}月{expected_date.day}日数据为空，请检查。"
@@ -155,7 +181,9 @@ def missing_data_notice(records: list[dict], expected_date: date) -> str | None:
         if missing:
             if len(missing) == len(expected_channels):
                 return f"注意：{current.month}月{current.day}日数据为空，请检查。"
-            labels = "、".join(config["label"] for config in CHANNELS if config["source"] in missing)
+            labels = "、".join(dict.fromkeys(
+                channel for channel in [*live_channels, *LEGACY_REQUIRED_CHANNELS] if channel in missing
+            ))
             return f"注意：{current.month}月{current.day}日{labels}数据为空，请检查。"
         current += timedelta(days=1)
     return None
@@ -190,6 +218,31 @@ def weekly_sparkline(series: dict[date, float], latest: date) -> tuple[str, str]
     return sparkline, trend
 
 
+def matching_target(targets: dict[str, float], channel: str) -> float | None:
+    for name in (channel, *TARGET_ALIASES.get(channel, ())):
+        if name in targets:
+            return targets[name]
+    return None
+
+
+def metric_line(label: str, actual: float, target: float | None) -> str:
+    if target is None:
+        return f"🔴{label} **{actual:.2f}万**（目标待同步）"
+    return f"🔴{label} **{actual:.2f}万 / {target:.2f}万**（{actual / target:.1%}）"
+
+
+def missing_actual_block(channel: str, new_target: float | None, mau_target: float | None) -> str:
+    def target_text(target: float | None) -> str:
+        return f"{target:.2f}万目标" if target is not None else "目标待同步"
+
+    return (
+        f"**➡️{channel}**\n\n"
+        f"🔴昨日新增 **暂未回传**\n\n"
+        f"🔴本月新增 **暂未回传 / {target_text(new_target)}**\n\n"
+        f"🔴近30天 MAD **暂未回传 / {target_text(mau_target)}**"
+    )
+
+
 def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]], expected_date: date | None = None) -> str:
     records = source_records(source_rows)
     latest = expected_date or report_date()
@@ -201,8 +254,8 @@ def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]], ex
     month_start = latest.replace(day=1)
     days_in_month = calendar.monthrange(latest.year, latest.month)[1]
     blocks = []
-    for config in CHANNELS:
-        matched = [record for record in records if record["channel"] == config["source"]]
+    for channel in report_channels(records, targets):
+        matched = [record for record in records if record["channel"] == channel]
         daily_new: dict[date, float] = defaultdict(float)
         daily_mau: dict[date, float] = {}
         for record in matched:
@@ -210,27 +263,32 @@ def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]], ex
                 daily_new[record["date"]] += record["new"] / UNIT_DIVISOR
             if record["mau"] is not None:
                 daily_mau[record["date"]] = record["mau"] / UNIT_DIVISOR
+        new_target = matching_target(targets["新增"], channel)
+        mau_target = matching_target(targets["MAU"], channel)
         if latest not in daily_new or latest not in daily_mau:
-            raise RuntimeError(f"{config['label']} is missing data for {latest:%Y-%m-%d}.")
-        new_target = targets["新增"].get(config["new_target"])
-        mau_target = targets["MAU"].get(config["target"])
-        if new_target is None or mau_target is None:
-            raise RuntimeError(f"{config['label']} target mapping is missing for {latest.month}月.")
+            blocks.append(missing_actual_block(channel, new_target, mau_target))
+            continue
         month_actual = sum(value for day, value in daily_new.items() if month_start <= day <= latest)
         daily_actual = month_actual / latest.day
-        daily_target = new_target / days_in_month
+        daily_target = new_target / days_in_month if new_target is not None else None
         sparkline, _ = weekly_sparkline(daily_new, latest)
+        daily_average = (
+            f"**{daily_actual:.2f}万 / {daily_target:.2f}万**"
+            if daily_target is not None
+            else f"**{daily_actual:.2f}万**（目标待同步）"
+        )
         blocks.append(
-            f"**➡️{config['label']}**\n\n"
-            f"🔴昨日新增 **{daily_new[latest]:.2f}万**　|　本月日均 **{daily_actual:.2f}万 / {daily_target:.2f}万** 本月新增 **{month_actual:.2f}万 / {new_target:.2f}万**（{month_actual / new_target:.1%}）\n\n"
-            f"🔴近30天 MAD **{daily_mau[latest]:.2f}万 / {mau_target:.2f}万**（{daily_mau[latest] / mau_target:.1%}）\n\n"
+            f"**➡️{channel}**\n\n"
+            f"🔴昨日新增 **{daily_new[latest]:.2f}万**　|　本月日均 {daily_average}\n\n"
+            f"{metric_line('本月新增', month_actual, new_target)}\n\n"
+            f"{metric_line('近30天 MAD', daily_mau[latest], mau_target)}\n\n"
             f"🔴近12周新增日均 {sparkline}"
         )
-    return "\n\n".join(blocks) + f"\n\n[查看三方&导量运营数据]({SHEET_URL})"
+    return "\n\n".join(blocks) + f"\n\n[查看用户增长运营数据]({SHEET_URL})"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Prepare acquisition progress report.")
+    parser = argparse.ArgumentParser(description="Prepare user-growth KPI report.")
     parser.add_argument("--output", required=True)
     parser.add_argument("--subtitle-output")
     args = parser.parse_args()

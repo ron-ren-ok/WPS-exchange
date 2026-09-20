@@ -39,11 +39,11 @@ jobs:
           python scripts/send_acquisition_progress.py
           --output "$RUNNER_TEMP/acquisition-progress.md"
           --subtitle-output "$RUNNER_TEMP/acquisition-subtitle.txt"
-      - name: Send WPS acquisition progress card
+      - name: Send WPS user-growth KPI card
         shell: pwsh
         env:
           WPS_WEBHOOK_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.webhook_target == 'test' && secrets.WPS_WEBHOOK_URL_TEST || secrets.WPS_WEBHOOK_ACQUISITION }}
         run: |
           $cardText = Get-Content -LiteralPath "$env:RUNNER_TEMP/acquisition-progress.md" -Raw -Encoding utf8
           $cardSubtitle = Get-Content -LiteralPath "$env:RUNNER_TEMP/acquisition-subtitle.txt" -Raw -Encoding utf8
-          ./scripts/send-wps-webhook.ps1 -CardTitle '📣导量、三方、Affiliate KPI播报' -CardSubtitle $cardSubtitle.Trim() -CardText $cardText -WebhookUrl $env:WPS_WEBHOOK_URL
+          ./scripts/send-wps-webhook.ps1 -CardTitle '📣用户增长KPI播报' -CardSubtitle $cardSubtitle.Trim() -CardText $cardText -WebhookUrl $env:WPS_WEBHOOK_URL
