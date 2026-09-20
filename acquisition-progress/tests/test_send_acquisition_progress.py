@@ -145,6 +145,21 @@ class AcquisitionProgressTests(unittest.TestCase):
         self.assertIn("**➡️Mac**", text)
         self.assertIn("暂未回传 / 2.00万目标", text)
 
+    def test_report_sections_keep_the_requested_channels_separate(self):
+        rows = [[cell("日期"), cell("渠道"), cell("新增设备数"), cell("近30日活跃设备数_MAD")]]
+        channels = ("整体", "三方合作", "Affiliate", "安卓导PC", "SEM", "官网", "其他", "微软商店", "SEO", "Mac")
+        for channel in channels:
+            rows.append([cell(number=46225), cell(channel), cell(number=10000), cell(number=20000)])
+        targets = {"新增": {channel: 1 for channel in channels}, "MAU": {channel: 2 for channel in channels}}
+        with patch.object(REPORT, "target_config", return_value=targets):
+            partner = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22), channels=REPORT.REPORT_SECTIONS["partner"])
+            other = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22), channels=REPORT.REPORT_SECTIONS["other"])
+        self.assertIn("**➡️三方合作**", partner)
+        self.assertIn("**➡️Affiliate**", partner)
+        self.assertNotIn("**➡️整体**", partner)
+        self.assertIn("**➡️Mac**", other)
+        self.assertNotIn("**➡️Affiliate**", other)
+
 
     def test_subtitle_includes_send_date_and_elapsed_month_progress(self):
         self.assertEqual(REPORT.report_subtitle(date(2026, 7, 23), date(2026, 7, 22)), "2026-07-23，时间进度 71.0%")

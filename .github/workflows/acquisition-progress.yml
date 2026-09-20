@@ -37,13 +37,31 @@ jobs:
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
         run: >-
           python scripts/send_acquisition_progress.py
-          --output "$RUNNER_TEMP/acquisition-progress.md"
+          --overall-output "$RUNNER_TEMP/acquisition-overall.md"
+          --partner-output "$RUNNER_TEMP/acquisition-partner.md"
+          --other-output "$RUNNER_TEMP/acquisition-other.md"
           --subtitle-output "$RUNNER_TEMP/acquisition-subtitle.txt"
-      - name: Send WPS user-growth KPI card
+      - name: Send three WPS user-growth KPI cards
         shell: pwsh
         env:
           WPS_WEBHOOK_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.webhook_target == 'test' && secrets.WPS_WEBHOOK_URL_TEST || secrets.WPS_WEBHOOK_ACQUISITION }}
         run: |
-          $cardText = Get-Content -LiteralPath "$env:RUNNER_TEMP/acquisition-progress.md" -Raw -Encoding utf8
           $cardSubtitle = Get-Content -LiteralPath "$env:RUNNER_TEMP/acquisition-subtitle.txt" -Raw -Encoding utf8
-          ./scripts/send-wps-webhook.ps1 -CardTitle '📣用户增长KPI播报' -CardSubtitle $cardSubtitle.Trim() -CardText $cardText -WebhookUrl $env:WPS_WEBHOOK_URL
+          $failures = [System.Collections.Generic.List[string]]::new()
+          function Send-KpiCard([string]$title, [string]$path) {
+            try {
+              $cardText = Get-Content -LiteralPath $path -Raw -Encoding utf8
+              ./scripts/send-wps-webhook.ps1 -CardTitle $title -CardSubtitle $cardSubtitle.Trim() -CardText $cardText -WebhookUrl $env:WPS_WEBHOOK_URL
+            } catch {
+              Write-Warning "Failed to send $title : $($_.Exception.Message)"
+              $failures.Add($title)
+            }
+          }
+          Send-KpiCard '📣用户增长KPI播报（1/3 · 整体）' "$env:RUNNER_TEMP/acquisition-overall.md"
+          Start-Sleep -Seconds 3
+          Send-KpiCard '📣用户增长KPI播报（2/3 · 三方及Affiliate）' "$env:RUNNER_TEMP/acquisition-partner.md"
+          Start-Sleep -Seconds 3
+          Send-KpiCard '📣用户增长KPI播报（3/3 · 其他渠道）' "$env:RUNNER_TEMP/acquisition-other.md"
+          if ($failures.Count -gt 0) {
+            throw "KPI cards attempted in sequence, but failed to send: $($failures -join '；')"
+          }

@@ -37,6 +37,11 @@ TARGET_ALIASES = {
 # migration.  Other channels are added to this check as soon as they appear in
 # the live source data.
 LEGACY_REQUIRED_CHANNELS = ("三方换量", "安卓导PC", "Affiliate")
+REPORT_SECTIONS = {
+    "overall": ("整体",),
+    "partner": ("三方合作", "Affiliate"),
+    "other": ("安卓导PC", "SEM", "官网", "其他", "微软商店", "SEO", "Mac"),
+}
 MAX_SHEETS_ATTEMPTS = 3
 SHEETS_RETRY_DELAY_SECONDS = 5
 
@@ -243,7 +248,12 @@ def missing_actual_block(channel: str, new_target: float | None, mau_target: flo
     )
 
 
-def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]], expected_date: date | None = None) -> str:
+def report_text(
+    source_rows: list[list[dict]],
+    target_rows: list[list[dict]],
+    expected_date: date | None = None,
+    channels: tuple[str, ...] | None = None,
+) -> str:
     records = source_records(source_rows)
     latest = expected_date or report_date()
     notice = missing_data_notice(records, latest)
@@ -254,7 +264,7 @@ def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]], ex
     month_start = latest.replace(day=1)
     days_in_month = calendar.monthrange(latest.year, latest.month)[1]
     blocks = []
-    for channel in report_channels(records, targets):
+    for channel in channels or tuple(report_channels(records, targets)):
         matched = [record for record in records if record["channel"] == channel]
         daily_new: dict[date, float] = defaultdict(float)
         daily_mau: dict[date, float] = {}
@@ -289,12 +299,30 @@ def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]], ex
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare user-growth KPI report.")
-    parser.add_argument("--output", required=True)
+    parser.add_argument("--output")
+    parser.add_argument("--overall-output")
+    parser.add_argument("--partner-output")
+    parser.add_argument("--other-output")
     parser.add_argument("--subtitle-output")
     args = parser.parse_args()
     source_rows, target_rows = read_data()
     sent_date, data_date = beijing_today(), report_date()
-    Path(args.output).write_text(report_text(source_rows, target_rows, expected_date=data_date), encoding="utf-8")
+    if args.output:
+        Path(args.output).write_text(report_text(source_rows, target_rows, expected_date=data_date), encoding="utf-8")
+    else:
+        outputs = {
+            "overall": args.overall_output,
+            "partner": args.partner_output,
+            "other": args.other_output,
+        }
+        missing = [section for section, output in outputs.items() if not output]
+        if missing:
+            parser.error("--output or all three section output paths are required.")
+        for section, output in outputs.items():
+            Path(output).write_text(
+                report_text(source_rows, target_rows, expected_date=data_date, channels=REPORT_SECTIONS[section]),
+                encoding="utf-8",
+            )
     if args.subtitle_output:
         Path(args.subtitle_output).write_text(report_subtitle(sent_date, data_date), encoding="utf-8")
     print("Acquisition progress content prepared.")
