@@ -29,17 +29,20 @@ def login(session,secret):
  if not p or not u or not b:raise RuntimeError("Tracker login form changed")
  d=form_data(s);d.update({u["name"]:"WPS",p["name"]:secret,b["name"]:b.get("value","Login")});r=session.post(r.url,data=d,timeout=30);r.raise_for_status()
  if "dashboard.aspx" not in r.url.lower() and "logout" not in r.text.lower():raise RuntimeError("Tracker login was not accepted")
-def export_date_value(control,include_history):
- if not include_history:return "3"
- all_dates=next((option.get("value","") for option in control.select("option") if "all" in option.get_text(" ",strip=True).lower()),None)
- if all_dates is None:raise RuntimeError("Tracker does not expose an all-dates country export option for historical backfill")
- return all_dates
-def fetch_country_export(session,include_history=False):
+def export_date_values(control,include_history):
+ if not include_history:return ("3",)
+ values=tuple(dict.fromkeys(option.get("value","") for option in control.select("option") if option.get("value","")!=""))
+ if not values:raise RuntimeError("Tracker country export has no selectable date options for historical backfill")
+ return values
+def fetch_country_exports(session,include_history=False):
  r=session.get(REPORT_URL,timeout=30);r.raise_for_status();s=BeautifulSoup(r.text,"html.parser")
  source=s.select_one("select[name='ctl00$ContentPlaceHolder1$ddSource']");day=s.select_one("select[name='ctl00$ContentPlaceHolder1$dddate']")
  export=next((x for x in s.select("input[name],button[name]") if "export" in x.get_text(" ",strip=True).lower() or "export" in x.get("value","").lower()),None)
  if not source or not day or not export:raise RuntimeError("Tracker country export controls changed")
- d=form_data(s);d.update({source["name"]:"0",day["name"]:export_date_value(day,include_history),export["name"]:export.get("value","Export Excel")});r=session.post(REPORT_URL,data=d,timeout=30);r.raise_for_status();return r.text
+ for date_value in export_date_values(day,include_history):
+  d=form_data(s);d.update({source["name"]:"0",day["name"]:date_value,export["name"]:export.get("value","Export Excel")});r=session.post(REPORT_URL,data=d,timeout=30);r.raise_for_status();yield r.text
+def fetch_country_export(session):
+ return next(fetch_country_exports(session))
 def parse_country_report(html,cutoff,start=None):
  s=BeautifulSoup(html,"html.parser");want=("Date","Source","Campaign","Publisher","Country","Country Code","Install Count","PPI")
  table=next((x for x in s.find_all("table") if x.find("tr") and tuple(c.get_text(" ",strip=True) for c in x.find("tr").find_all(["td","th"]))==want),None)
@@ -109,7 +112,13 @@ def main():
  cutoff=parse_day(a.end_date) if a.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date()-timedelta(days=1)
  start=parse_day(a.start_date) if a.start_date else None
  if start is not None and start>cutoff:raise RuntimeError("start date is after end date")
- with requests.Session() as s:s.headers["User-Agent"]="WPS partner country sync/1.0";login(s,secret);source=parse_country_report(fetch_country_export(s,include_history=start is not None),cutoff,start)
+ with requests.Session() as s:
+  s.headers["User-Agent"]="WPS partner country sync/1.0";login(s,secret);source={}
+  for html in fetch_country_exports(s,include_history=start is not None):
+   try:source.update(parse_country_report(html,cutoff,start))
+   except RuntimeError as exc:
+    if str(exc)!="Tracker returned no mapped country-detail rows":raise
+ if not source:raise RuntimeError("Tracker returned no mapped country-detail rows in the requested date range")
  api=service(raw);head,targets=target_rows(api);updates,appends,overwrites=plan_writes(head,targets,source,a.allow_overwrite)
  if updates:api.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID,body={"valueInputOption":"USER_ENTERED","data":updates}).execute()
  append(api,head,appends);print(json.dumps({"start":start.isoformat() if start else None,"end":cutoff.isoformat(),"records":len(source),"updated_cells":len(updates),"appended_rows":len(appends),"overwrites":overwrites},ensure_ascii=False))

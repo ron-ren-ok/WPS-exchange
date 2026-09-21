@@ -11,10 +11,10 @@ class S:
 class T(unittest.TestCase):
  def test_export(self):
   s=S();self.assertEqual(sync.fetch_country_export(s),"<table></table>");self.assertEqual(s.data["ctl00$ContentPlaceHolder1$ddSource"],"0")
- def test_historical_export_uses_all_dates_option(self):
-  class HistorySession(S):
-   def get(self,u,timeout):return R('''<form><input type="hidden" name="__VIEWSTATE" value="s"><select name="ctl00$ContentPlaceHolder1$ddSource"></select><select name="ctl00$ContentPlaceHolder1$dddate"><option value="3">Last 3 days</option><option value="0">All dates</option></select><input name="ctl00$ContentPlaceHolder1$btnExport" value="Export Excel"></form>''')
-  s=HistorySession();sync.fetch_country_export(s,include_history=True);self.assertEqual(s.data["ctl00$ContentPlaceHolder1$dddate"],"0")
+ def test_historical_export_uses_every_date_option(self):
+  from bs4 import BeautifulSoup
+  control=BeautifulSoup('<select><option value="3">Last 3 days</option><option value="7">Last 7 days</option><option value="3">Duplicate</option></select>',"html.parser").select_one("select")
+  self.assertEqual(sync.export_date_values(control,True),("3","7"))
  def test_parse_and_plan(self):
   html='''<table><tr><td>Date</td><td>Source</td><td>Campaign</td><td>Publisher</td><td>Country</td><td>Country Code</td><td>Install Count</td><td>PPI</td></tr><tr><td>08/23/2026</td><td>wnrwpsofc_exchange</td><td>old</td><td></td><td>Italy</td><td>IT</td><td>10</td><td>5</td></tr><tr><td>08/24/2026</td><td>wnrwpsofc_exchange</td><td>a</td><td></td><td>Italy</td><td>it</td><td>205</td><td>102.5</td></tr><tr><td>08/24/2026</td><td>wnrwpsofc_exchange</td><td>b</td><td></td><td>Italy</td><td>IT</td><td>5</td><td>2.5</td></tr><tr><td>08/24/2026</td><td>wnrwpsofc_exchange</td><td>unknown</td><td></td><td>Unknown</td><td>UNKNOWN</td><td>99</td><td>49.5</td></tr></table>'''
   source=sync.parse_country_report(html,date(2026,8,24));self.assertEqual(source[(date(2026,8,24),"IT","换量弹窗")],{"new_users":210,"blood_volume":105})
