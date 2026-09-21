@@ -150,7 +150,7 @@ def gmail_client(username, password):
         raise RuntimeError("Gmail IMAP login failed") from exc
 
 
-def latest_zip_attachments(client):
+def zip_attachments(client, include_history=False):
     status, mailboxes = client.list()
     if status != "OK":
         raise RuntimeError("Gmail mailbox listing failed")
@@ -162,22 +162,41 @@ def latest_zip_attachments(client):
     if status != "OK":
         raise RuntimeError("Gmail subject search failed")
     uids = data[0].split()
-    if not uids:
-        return
-    # IMAP SEARCH returns UIDs in ascending order, so the final UID is the newest
-    # matching message. Historical reports must never affect the current sync.
-    status, payload = client.uid("fetch", uids[-1], "(RFC822)")
-    if status != "OK" or not payload or not isinstance(payload[0], tuple):
-        return
-    message = email.message_from_bytes(payload[0][1])
-    if parseaddr(message.get("From", ""))[1].lower() != SENDER:
-        return
-    if message.get("Subject", "").strip() != SUBJECT:
-        return
-    for part in message.walk():
-        raw, filename = part.get_payload(decode=True), part.get_filename() or ""
-        if raw and filename.lower().endswith(".zip"):
-            yield raw
+    # IMAP SEARCH returns UIDs in ascending order. For a historical interval,
+    # examine newest-to-oldest so setdefault keeps the newest report for a key.
+    selected_uids = reversed(uids) if include_history else (uids[-1],)
+    for uid in selected_uids:
+        status, payload = client.uid("fetch", uid, "(RFC822)")
+        if status != "OK" or not payload or not isinstance(payload[0], tuple):
+            continue
+        message = email.message_from_bytes(payload[0][1])
+        if parseaddr(message.get("From", ""))[1].lower() != SENDER:
+            continue
+        if message.get("Subject", "").strip() != SUBJECT:
+            continue
+        for part in message.walk():
+            raw, filename = part.get_payload(decode=True), part.get_filename() or ""
+            if raw and filename.lower().endswith(".zip"):
+                yield raw
+
+
+def latest_zip_attachments(client):
+    """Return only the newest report for the routine incremental sync."""
+    yield from zip_attachments(client)
+
+
+def source_from_attachments(attachments, start, end):
+    source = {}
+    for raw_zip in attachments:
+        try:
+            report = parse_report(raw_zip, start, end)
+        except RuntimeError as exc:
+            if str(exc) != "Opera report has no mapped rows in the requested date range":
+                raise
+            continue
+        for key, metrics in report.items():
+            source.setdefault(key, metrics)
+    return source
 
 def sheet_service(raw):
     from google.oauth2.service_account import Credentials
@@ -288,14 +307,12 @@ def main():
         raise RuntimeError("start date is after end date")
     gmail = gmail_client(username, password)
     try:
-        source = {}
-        for raw_zip in latest_zip_attachments(gmail):
-            for key, metrics in parse_report(raw_zip, start, end).items():
-                source.setdefault(key, metrics)
+        source = source_from_attachments(
+            zip_attachments(gmail, include_history=bool(args.start_date)), start, end)
     finally:
         gmail.logout()
     if not source:
-        raise RuntimeError("no verified Opera country-report ZIP attachment was found")
+        raise RuntimeError("no verified Opera country-report ZIP rows were found in the requested date range")
     service = sheet_service(service_json)
     headers, target = existing_rows(service)
     updates, appends = plan_writes(headers, target, source, args.allow_overwrite)

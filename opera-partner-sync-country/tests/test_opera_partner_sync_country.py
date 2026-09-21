@@ -41,6 +41,45 @@ class OperaCountrySyncTest(unittest.TestCase):
         client = FakeClient()
         self.assertEqual(list(sync.latest_zip_attachments(client)), [b"newest"])
         self.assertEqual(client.fetched_uids, [b"200"])
+
+    def test_explicit_range_reads_matching_history_newest_first(self):
+        class FakeClient:
+            def __init__(self):
+                self.fetched_uids = []
+
+            def list(self):
+                return "OK", []
+
+            def select(self, mailbox, readonly):
+                return "OK", []
+
+            def uid(self, command, *args):
+                if command == "search":
+                    return "OK", [b"100 200"]
+                self.fetched_uids.append(args[0])
+                result = EmailMessage()
+                result["From"] = "Looker <noreply@lookermail.com>"
+                result["Subject"] = sync.SUBJECT
+                result.add_attachment(args[0], maintype="application", subtype="zip", filename="report.zip")
+                return "OK", [(None, result.as_bytes())]
+
+        client = FakeClient()
+        self.assertEqual(list(sync.zip_attachments(client, include_history=True)), [b"200", b"100"])
+        self.assertEqual(client.fetched_uids, [b"200", b"100"])
+
+    def test_historical_source_keeps_newest_duplicate_record(self):
+        def report(day, installs):
+            raw = io.BytesIO()
+            with zipfile.ZipFile(raw, "w") as archive:
+                archive.writestr("report.csv", "date,campaign,country,new_users,blood_volume\n"
+                                 f"{day},wpstest,DE,{installs},4\n")
+            return raw.getvalue()
+
+        result = sync.source_from_attachments(
+            [report("2026-08-24", 8), report("2026-08-24", 2)],
+            date(2026, 8, 24), date(2026, 8, 24))
+        self.assertEqual(result[(date(2026, 8, 24), "DE", "气泡")],
+                         {"new_users": 8, "blood_volume": 4})
     def test_zip_csv_is_aggregated_by_country_and_surface(self):
         raw = io.BytesIO()
         with zipfile.ZipFile(raw, "w") as archive:

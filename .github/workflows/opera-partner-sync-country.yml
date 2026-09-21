@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: Start date (YYYY-MM-DD); defaults to two days before end date
+        description: Start date (YYYY-MM-DD); enables historical attachments for interval backfill
         required: false
         type: string
       end_date:
