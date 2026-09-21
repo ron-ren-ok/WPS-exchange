@@ -43,6 +43,17 @@ def fetch_country_exports(session,include_history=False):
   d=form_data(s);d.update({source["name"]:"0",day["name"]:date_value,export["name"]:export.get("value","Export Excel")});r=session.post(REPORT_URL,data=d,timeout=30);r.raise_for_status();yield r.text
 def fetch_country_export(session):
  return next(fetch_country_exports(session))
+def source_from_exports(exports,cutoff,start):
+ source={};invalid_tables=0;export_count=0
+ for html in exports:
+  export_count+=1
+  try:source.update(parse_country_report(html,cutoff,start))
+  except RuntimeError as exc:
+   if str(exc)=="Tracker country export table headers changed":invalid_tables+=1;continue
+   if str(exc)!="Tracker returned no mapped country-detail rows":raise
+ if source:return source
+ if export_count and invalid_tables==export_count:raise RuntimeError("Tracker country export table headers changed for every selected date option")
+ raise RuntimeError("Tracker returned no mapped country-detail rows in the requested date range")
 def parse_country_report(html,cutoff,start=None):
  s=BeautifulSoup(html,"html.parser");want=("Date","Source","Campaign","Publisher","Country","Country Code","Install Count","PPI")
  table=next((x for x in s.find_all("table") if x.find("tr") and tuple(c.get_text(" ",strip=True) for c in x.find("tr").find_all(["td","th"]))==want),None)
@@ -113,12 +124,7 @@ def main():
  start=parse_day(a.start_date) if a.start_date else None
  if start is not None and start>cutoff:raise RuntimeError("start date is after end date")
  with requests.Session() as s:
-  s.headers["User-Agent"]="WPS partner country sync/1.0";login(s,secret);source={}
-  for html in fetch_country_exports(s,include_history=start is not None):
-   try:source.update(parse_country_report(html,cutoff,start))
-   except RuntimeError as exc:
-    if str(exc)!="Tracker returned no mapped country-detail rows":raise
- if not source:raise RuntimeError("Tracker returned no mapped country-detail rows in the requested date range")
+  s.headers["User-Agent"]="WPS partner country sync/1.0";login(s,secret);source=source_from_exports(fetch_country_exports(s,include_history=start is not None),cutoff,start)
  api=service(raw);head,targets=target_rows(api);updates,appends,overwrites=plan_writes(head,targets,source,a.allow_overwrite)
  if updates:api.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID,body={"valueInputOption":"USER_ENTERED","data":updates}).execute()
  append(api,head,appends);print(json.dumps({"start":start.isoformat() if start else None,"end":cutoff.isoformat(),"records":len(source),"updated_cells":len(updates),"appended_rows":len(appends),"overwrites":overwrites},ensure_ascii=False))
