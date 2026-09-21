@@ -5,7 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 SHEET_ID="1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"; SHEET_NAME="合作方新增血量分国家"
 HEADERS=("日期","合作方","国家代码","运营位","新增","血量"); PARTNER="Winriser"
-LOGIN_URL="https://trk.entiretrack.com/trackingassistant/"; REPORT_URL=LOGIN_URL+"viewdailyinstallinfo.aspx"
+LOGIN_URL="https://innovana.in/trackingassistant/"; REPORT_URL=LOGIN_URL+"viewdailyinstallinfo.aspx"
 SOURCE_TO_OPERATION={"wnrwpsofc":"气泡","wnrwpsofc_exchange":"换量弹窗","wnrwps_radar":"文档雷达"}
 NON_COUNTRY_VALUES={"","UNKNOWN"}
 def parse_day(v):

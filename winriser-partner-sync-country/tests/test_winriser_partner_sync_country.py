@@ -3,7 +3,7 @@ from datetime import date
 from pathlib import Path
 p=Path(__file__).resolve().parents[1]/"src"/"winriser_partner_sync_country.py";spec=importlib.util.spec_from_file_location("sync",p);sync=importlib.util.module_from_spec(spec);spec.loader.exec_module(sync)
 class R:
- def __init__(self,t):self.text=t;self.url="https://trk.entiretrack.com/trackingassistant/viewdailyinstallinfo.aspx"
+ def __init__(self,t):self.text=t;self.url="https://innovana.in/trackingassistant/viewdailyinstallinfo.aspx"
  def raise_for_status(self):pass
 class S:
  def get(self,u,timeout):return R('''<form><input type="hidden" name="__VIEWSTATE" value="s"><select name="ctl00$ContentPlaceHolder1$ddSource"></select><select name="ctl00$ContentPlaceHolder1$dddate"></select><input name="ctl00$ContentPlaceHolder1$btnExport" value="Export Excel"></form>''')
