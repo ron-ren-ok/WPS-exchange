@@ -7,6 +7,7 @@ SHEET_ID="1vSBU84SFoVlXdaczYYAev8mC0PEfjRQyVSv8s2OAGW4"; SHEET_NAME="合作方�
 HEADERS=("日期","合作方","国家代码","运营位","新增","血量"); PARTNER="Winriser"
 LOGIN_URL="https://trk.entiretrack.com/trackingassistant/"; REPORT_URL=LOGIN_URL+"viewdailyinstallinfo.aspx"
 SOURCE_TO_OPERATION={"wnrwpsofc":"气泡","wnrwpsofc_exchange":"换量弹窗","wnrwps_radar":"文档雷达"}
+NON_COUNTRY_VALUES={"","UNKNOWN"}
 def parse_day(v):
  t=str(v).strip().split(",",1)[0]
  for f in ("%Y-%m-%d","%Y/%m/%d","%d.%m.%Y","%m/%d/%Y"):
@@ -34,7 +35,7 @@ def fetch_country_export(session):
  export=next((x for x in s.select("input[name],button[name]") if "export" in x.get_text(" ",strip=True).lower() or "export" in x.get("value","").lower()),None)
  if not source or not day or not export:raise RuntimeError("Tracker country export controls changed")
  d=form_data(s);d.update({source["name"]:"0",day["name"]:"3",export["name"]:export.get("value","Export Excel")});r=session.post(REPORT_URL,data=d,timeout=30);r.raise_for_status();return r.text
-def parse_country_report(html,cutoff):
+def parse_country_report(html,cutoff,start=None):
  s=BeautifulSoup(html,"html.parser");want=("Date","Source","Campaign","Publisher","Country","Country Code","Install Count","PPI")
  table=next((x for x in s.find_all("table") if x.find("tr") and tuple(c.get_text(" ",strip=True) for c in x.find("tr").find_all(["td","th"]))==want),None)
  if table is None:raise RuntimeError("Tracker country export table headers changed")
@@ -45,8 +46,10 @@ def parse_country_report(html,cutoff):
   day,source,_,_,_,country,installs,spend=c;op=SOURCE_TO_OPERATION.get(source.strip().lower().split(" - ",1)[0])
   if not op:continue
   day=parse_day(day)
+  if start is not None and day<start:continue
   if day>cutoff:continue
   country=country.strip().upper()
+  if country in NON_COUNTRY_VALUES:continue
   if not re.fullmatch(r"[A-Z]{2}",country):raise RuntimeError(f"Tracker returned an invalid country code: {country!r}")
   row=out.setdefault((day,country,op),{"new_users":0,"blood_volume":0});row["new_users"]+=number(installs);row["blood_volume"]+=number(spend)
  if not out:raise RuntimeError("Tracker returned no mapped country-detail rows")
@@ -95,14 +98,16 @@ def append(api,head,records):
   rows.append(row)
  api.spreadsheets().values().append(spreadsheetId=SHEET_ID,range=f"'{SHEET_NAME}'!A1:{col(len(head)-1)}",valueInputOption="USER_ENTERED",insertDataOption="INSERT_ROWS",body={"majorDimension":"ROWS","values":rows}).execute()
 def main():
- p=argparse.ArgumentParser();p.add_argument("--end-date");p.add_argument("--allow-overwrite",action="store_true");a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument("--start-date");p.add_argument("--end-date");p.add_argument("--allow-overwrite",action="store_true");a=p.parse_args()
  secret=os.environ.get("WINRISER_LOGIN_SECRET","").strip().strip('"').strip("'");raw=os.environ.get("GOOGLE_SHEET_SERVICE_ACCOUNT_JSON")
  if not secret or not raw:raise RuntimeError("missing required GitHub Actions secret")
  cutoff=parse_day(a.end_date) if a.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date()-timedelta(days=1)
- with requests.Session() as s:s.headers["User-Agent"]="WPS partner country sync/1.0";login(s,secret);source=parse_country_report(fetch_country_export(s),cutoff)
+ start=parse_day(a.start_date) if a.start_date else None
+ if start is not None and start>cutoff:raise RuntimeError("start date is after end date")
+ with requests.Session() as s:s.headers["User-Agent"]="WPS partner country sync/1.0";login(s,secret);source=parse_country_report(fetch_country_export(s),cutoff,start)
  api=service(raw);head,targets=target_rows(api);updates,appends,overwrites=plan_writes(head,targets,source,a.allow_overwrite)
  if updates:api.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID,body={"valueInputOption":"USER_ENTERED","data":updates}).execute()
- append(api,head,appends);print(json.dumps({"records":len(source),"updated_cells":len(updates),"appended_rows":len(appends),"overwrites":overwrites},ensure_ascii=False))
+ append(api,head,appends);print(json.dumps({"start":start.isoformat() if start else None,"end":cutoff.isoformat(),"records":len(source),"updated_cells":len(updates),"appended_rows":len(appends),"overwrites":overwrites},ensure_ascii=False))
 if __name__=="__main__":
  try:main()
  except (RuntimeError,ValueError,requests.RequestException,json.JSONDecodeError) as exc:print(f"ERROR: {exc}",file=sys.stderr);sys.exit(2)

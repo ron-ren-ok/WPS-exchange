@@ -2,8 +2,12 @@ name: Winriser partner sync-Country
 on:
   workflow_dispatch:
     inputs:
+      start_date:
+        description: Start date (YYYY-MM-DD); enables interval backfill
+        required: false
+        type: string
       end_date:
-        description: End date (YYYY-MM-DD)
+        description: End date (YYYY-MM-DD); defaults to yesterday Beijing time
         required: false
         type: string
 permissions:
@@ -22,6 +26,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: >-
           python src/winriser_partner_sync_country.py
+          ${{ inputs.start_date && format('--start-date {0}', inputs.start_date) || '' }}
           ${{ inputs.end_date && format('--end-date {0}', inputs.end_date) || '' }}
           --allow-overwrite
         env:
