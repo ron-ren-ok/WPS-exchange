@@ -39,6 +39,21 @@ class AvastCountrySyncTests(unittest.TestCase):
         self.assertEqual((start, end), (date(2026, 8, 22), date(2026, 8, 24)))
         self.assertEqual(set(day for day, _, _ in selected), {date(2026, 8, 22), date(2026, 8, 23), date(2026, 8, 24)})
 
+    def test_uses_explicit_start_and_end_dates(self):
+        source = {
+            (date(2026, 8, 20), "DE", "avast气泡"): {"new": 1},
+            (date(2026, 8, 22), "DE", "avast气泡"): {"new": 2},
+            (date(2026, 8, 24), "DE", "avast气泡"): {"new": 4},
+        }
+        selected, start, end = SYNC.latest_three_days(source, date(2026, 8, 20), date(2026, 8, 24))
+        self.assertEqual((start, end), (date(2026, 8, 20), date(2026, 8, 24)))
+        self.assertEqual(set(selected), set(source))
+
+    def test_rejects_reversed_date_range(self):
+        source = {(date(2026, 8, 24), "DE", "avast气泡"): {"new": 1}}
+        with self.assertRaisesRegex(RuntimeError, "start date is after end date"):
+            SYNC.latest_three_days(source, date(2026, 8, 25), date(2026, 8, 24))
+
     def test_existing_key_is_overwritten(self):
         headers = ["日期", "合作方", "国家代码", "运营位", "新增", "血量"]
         key = (date(2026, 8, 24), "Avast", "US", "avast换量弹窗")

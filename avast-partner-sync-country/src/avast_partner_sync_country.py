@@ -123,13 +123,22 @@ def parse_report(raw):
     return output
 
 
-def latest_three_days(source, end=None):
+def latest_three_days(source, start=None, end=None):
+    if start is not None and end is not None and start > end:
+        raise RuntimeError("start date is after end date")
     eligible = [day for day, _, _ in source if end is None or day <= end]
     if not eligible:
         raise RuntimeError("Avast CSV has no mapped data on or before the requested end date")
     anchor = max(eligible)
-    start = anchor - timedelta(days=2)
-    return {(day, country, operation): metrics for (day, country, operation), metrics in source.items() if start <= day <= anchor}, start, anchor
+    window_start = start or anchor - timedelta(days=2)
+    selected = {
+        (day, country, operation): metrics
+        for (day, country, operation), metrics in source.items()
+        if window_start <= day <= anchor
+    }
+    if not selected:
+        raise RuntimeError("Avast CSV has no mapped data in the requested date range")
+    return selected, window_start, anchor
 
 
 def price_index(api):
@@ -304,7 +313,9 @@ def main():
         client.logout()
     if not source:
         raise RuntimeError("no verified Avast country-report CSV rows were found")
-    source, start, end = latest_three_days(source, parse_day(args.end_date) if args.end_date else None)
+    requested_start = parse_day(args.start_date) if args.start_date else None
+    requested_end = parse_day(args.end_date) if args.end_date else None
+    source, start, end = latest_three_days(source, requested_start, requested_end)
     api = service(raw)
     source, missing_prices = apply_prices(source, price_index(api))
     headers, found = targets(api)
