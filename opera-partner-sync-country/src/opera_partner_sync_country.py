@@ -21,6 +21,7 @@ EXPECTED_MAILBOX = "54lingbai@gmail.com"
 SENDER = "noreply@lookermail.com"
 SUBJECT = "Opera for Computers distribution partner - download"
 SURFACES = {"wpstest2/opera.exe": "换量弹窗", "wpstest": "气泡"}
+NON_COUNTRY_VALUES = {"UNKNOWN"}
 ALIASES = {
     "date": ("date", "day"),
     "campaign": ("campaign",),
@@ -129,6 +130,8 @@ def parse_report(raw_zip, start, end):
         if not start <= date <= end:
             continue
         country = str(row[columns["country"]] or "").strip().upper()
+        if country in NON_COUNTRY_VALUES:
+            continue
         if not re.fullmatch(r"[A-Z]{2}", country):
             raise RuntimeError(f"Opera returned invalid country code: {country!r}")
         record = result.setdefault((date, country, operation), {"new_users": 0, "blood_volume": 0})

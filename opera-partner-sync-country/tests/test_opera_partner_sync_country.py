@@ -89,7 +89,8 @@ class OperaCountrySyncTest(unittest.TestCase):
                 "date,campaign,country,new_users,blood_volume\n"
                 "2026-08-24,wpstest2/opera.exe,IT,205,102.5\n"
                 "2026-08-24,wpstest2/opera.exe,IT,5,2.5\n"
-                "2026-08-24,wpstest,DE,8,4\n",
+                "2026-08-24,wpstest,DE,8,4\n"
+                "2026-08-24,wpstest,UNKNOWN,99,49.5\n",
             )
         result = sync.parse_report(raw.getvalue(), date(2026, 8, 24), date(2026, 8, 24))
         self.assertEqual(result[(date(2026, 8, 24), "IT", "换量弹窗")],
