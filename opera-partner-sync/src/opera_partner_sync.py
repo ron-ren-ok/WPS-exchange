@@ -395,7 +395,7 @@ def main():
     end = parse_day(args.end_date) if args.end_date else today - timedelta(days=1)
     sheets = sheets_service(secrets["GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"])
     headers, target_rows = get_sheet(sheets)
-    start = parse_day(args.start_date) if args.start_date else end - timedelta(days=2)
+    start = parse_day(args.start_date) if args.start_date else end - timedelta(days=6)
     if start > end:
         raise RuntimeError("start date is after end date")
     explicit_range = bool(args.start_date or args.end_date)

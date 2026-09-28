@@ -268,9 +268,9 @@ class PerformanceTests(unittest.TestCase):
 
     def test_main_default_and_explicit_windows(self):
         for argv, expected_start, expected_end, since, history in [
-            (["sync"], date(2026, 9, 25), date(2026, 9, 27), date(2026, 9, 22), False),
+            (["sync"], date(2026, 9, 21), date(2026, 9, 27), date(2026, 9, 22), False),
             (["sync", "--start-date", "2026-08-01", "--end-date", "2026-08-10"], date(2026, 8, 1), date(2026, 8, 10), date(2026, 8, 1), True),
-            (["sync", "--end-date", "2026-08-10"], date(2026, 8, 8), date(2026, 8, 10), date(2026, 8, 8), True),
+            (["sync", "--end-date", "2026-08-10"], date(2026, 8, 4), date(2026, 8, 10), date(2026, 8, 4), True),
         ]:
             with self.subTest(argv=argv), \
                  patch.object(OPERA.sys, "argv", argv), \

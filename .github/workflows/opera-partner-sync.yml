@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: "Start date (YYYY-MM-DD); defaults to 3 complete days ending at end_date"
+        description: "Start date (YYYY-MM-DD); defaults to 7 complete days ending at end_date"
         required: false
         type: string
       end_date:
