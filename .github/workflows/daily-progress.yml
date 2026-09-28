@@ -41,6 +41,7 @@ jobs:
           python scripts/prepare_progress_card.py
           --output "$RUNNER_TEMP/wps-daily-progress.md"
           --subtitle-output "$RUNNER_TEMP/wps-daily-progress-subtitle.txt"
+          --elements-output "$RUNNER_TEMP/wps-daily-progress-elements.json"
       - name: Send WPS combined daily progress card
         shell: pwsh
         env:
@@ -50,9 +51,9 @@ jobs:
           WPS_WEBHOOK_KEY: ${{ secrets.WPS_WEBHOOK_KEY }}
           WPS_WEBHOOK_SECRET: ${{ secrets.WPS_WEBHOOK_SECRET }}
         run: |
-          $cardText = Get-Content -LiteralPath "$env:RUNNER_TEMP/wps-daily-progress.md" -Raw -Encoding utf8
+          $cardElements = Get-Content -LiteralPath "$env:RUNNER_TEMP/wps-daily-progress-elements.json" -Raw -Encoding utf8
           $subtitle = Get-Content -LiteralPath "$env:RUNNER_TEMP/wps-daily-progress-subtitle.txt" -Raw -Encoding utf8
           $webhookUrl = if ($env:WEBHOOK_TARGET -eq 'test') { $env:WPS_WEBHOOK_URL_TEST } else { $env:WPS_WEBHOOK_URL }
           if ([string]::IsNullOrWhiteSpace($webhookUrl)) { throw 'Selected webhook target is not configured.' }
           ./scripts/send-wps-webhook.ps1 -ValidateOnly -WebhookUrl $webhookUrl
-          ./scripts/send-wps-webhook.ps1 -CardTitle '📣日血量进度与月底预测' -CardSubtitle $subtitle.Trim() -CardText $cardText -WebhookUrl $webhookUrl
+          ./scripts/send-wps-webhook.ps1 -CardTitle '📣日血量进度与月底预测' -CardSubtitle $subtitle.Trim() -CardElementsJson $cardElements -WebhookUrl $webhookUrl

@@ -6,7 +6,7 @@
 
 - 血量、360 新增分别展示已回传、预测回传、月底预测和完成率；月目标放在指标标题内，两个指标之间用分隔线区分。
 - 预测回传 = 已回传 + 未回传；删除原来的已回传、未回传、后续预测分项数值行。全部图例放在一起，目标位置位于预计缺口图例右侧。
-- 两条加长的灰色分隔线分别位于两个指标之间、360 新增结论下方；先展示数据完整性及合作方名单，再展示共享图例。
+- 两条原生 `hr` 实线组件分别位于两个指标之间、360 新增结论下方，由客户端控制宽度和默认样式；先展示数据完整性及合作方名单，再展示共享图例。
 - 数据完整性提示、合作方名单和图例文字使用灰色，图例色块保留指标颜色；副标题只展示播报日期、时间进度和距月末天数。
 - 使用带颜色的字符进度条：蓝色实心 `▰` 为已回传，橙色实心 `▰` 为未回传，蓝色空心 `▱` 为后续预测，灰色实心 `▰` 为预计缺口，`│` 为目标位置。字符按比例近似展示，精确数值见文字。
 - 未回传仍是现有算法估算的缺失日期数值；只缩短展示文案，不改变计算口径。
@@ -37,7 +37,7 @@
 卡片生成命令：
 
 ```powershell
-python scripts/prepare_progress_card.py --output <body.md> --subtitle-output <subtitle.txt>
+python scripts/prepare_progress_card.py --output <body.md> --subtitle-output <subtitle.txt> --elements-output <elements.json>
 ```
 
-可用 `--end-date YYYY-MM-DD` 指定统计截止日，默认北京时间昨天。确认秘密配置后，使用现有 `scripts/send-wps-webhook.ps1` 的 `-CardTitle`、`-CardSubtitle` 和 `-CardText` 发送。
+可用 `--end-date YYYY-MM-DD` 指定统计截止日，默认北京时间昨天。使用 `scripts/send-wps-webhook.ps1` 的 `-CardTitle`、`-CardSubtitle` 和 `-CardElementsJson` 发送生成的组件 JSON；`-CardText` 仍支持原来的单文本卡片。

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import calendar
+import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -14,7 +15,6 @@ import send_daily_progress as daily
 COLORS = ("#3576dc", "#e5a239", "#3576dc", "#d4dae2")
 MARKS = ("▰", "▰", "▱", "▰")
 TEXT_GRAY = "#8c8c8c"
-SEPARATOR = f"<font color='#d4dae2'>{'─' * 40}</font>"
 
 
 def metric_summary(records: list[dict], metric: str, target: float, cutoff: date, predicate=lambda r: True) -> dict | None:
@@ -95,7 +95,7 @@ def metric_block(label: str, unit: str, summary: dict | None, target: float) -> 
     ])
 
 
-def card_content(records: list[dict], targets: dict[str, float], cutoff: date) -> str:
+def card_elements(records: list[dict], targets: dict[str, float], cutoff: date) -> list[dict]:
     monthly = [r for r in records if (r["date"].year, r["date"].month) == (cutoff.year, cutoff.month) and r["date"] <= cutoff]
     if not monthly:
         raise ValueError(f"No source data for {cutoff:%Y-%m}.")
@@ -112,15 +112,21 @@ def card_content(records: list[dict], targets: dict[str, float], cutoff: date) -
         f"<font color='{color}'>{mark}</font> {gray(label)}"
         for color, mark, label in zip(COLORS, MARKS, ("已回传", "未回传", "后续预测", "预计缺口"))
     ]) + "　" + gray("│ 目标位置")
-    return "\n\n".join([
-        metric_block("血量", "万美元", revenue, targets["血量"]),
-        SEPARATOR,
-        metric_block("360 新增", "万人", users, targets["360新增"]),
-        SEPARATOR,
-        status,
-        legend,
-        f"[查看合作方新增血量]({daily.SHEET_URL})",
-    ])
+    def text_element(text: str) -> dict:
+        return {"tag": "text", "content": {"type": "markdown", "text": text}}
+
+    return [
+        text_element(metric_block("血量", "万美元", revenue, targets["血量"])),
+        {"tag": "hr", "style": "solid"},
+        text_element(metric_block("360 新增", "万人", users, targets["360新增"])),
+        {"tag": "hr", "style": "solid"},
+        text_element("\n\n".join([status, legend, f"[查看合作方新增血量]({daily.SHEET_URL})"])),
+    ]
+
+
+def card_content(records: list[dict], targets: dict[str, float], cutoff: date) -> str:
+    """Plain-text companion; separators are native elements in the sent card."""
+    return "\n\n".join(element["content"]["text"] for element in card_elements(records, targets, cutoff) if element["tag"] == "text")
 
 
 def card_subtitle(cutoff: date, report_date: date) -> str:
@@ -132,13 +138,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True)
     parser.add_argument("--subtitle-output", required=True)
+    parser.add_argument("--elements-output", help="JSON card components including native horizontal rules")
     parser.add_argument("--end-date", help="Report cutoff date; defaults to yesterday Beijing time")
     args = parser.parse_args()
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
     cutoff = daily.parse_day(args.end_date) if args.end_date else today - timedelta(days=1)
     source, targets = daily.request_values()
-    content = card_content(daily.long_records(source), daily.monthly_targets(targets, cutoff.month), cutoff)
+    elements = card_elements(daily.long_records(source), daily.monthly_targets(targets, cutoff.month), cutoff)
+    content = "\n\n".join(element["content"]["text"] for element in elements if element["tag"] == "text")
     Path(args.output).write_text(content, encoding="utf-8")
+    if args.elements_output:
+        Path(args.elements_output).write_text(json.dumps(elements, ensure_ascii=False), encoding="utf-8")
     Path(args.subtitle_output).write_text(card_subtitle(cutoff, today), encoding="utf-8")
     print("WPS combined progress card prepared.")
 

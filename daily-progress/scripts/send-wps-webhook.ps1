@@ -4,6 +4,7 @@ param(
     [string]$CardTitle,
     [string]$CardSubtitle,
     [string]$CardText,
+    [string]$CardElementsJson,
     [string]$WebhookUrl,
     [switch]$ValidateOnly,
     [string]$WebhookKey = $env:WPS_WEBHOOK_KEY,
@@ -25,8 +26,15 @@ function Get-WebhookUrlFromLocalSecret {
 if ([string]::IsNullOrWhiteSpace($WebhookUrl)) { $WebhookUrl = Get-WebhookUrlFromLocalSecret }
 if ($ValidateOnly) { [pscustomobject]@{ SecretLoaded = $true; Webhook = 'configured' }; return }
 
-if ($CardTitle -or $CardSubtitle -or $CardText) {
-    if ([string]::IsNullOrWhiteSpace($CardTitle) -or [string]::IsNullOrWhiteSpace($CardText)) { throw '卡片需要 CardTitle 和 CardText。' }
+if ($CardTitle -or $CardSubtitle -or $CardText -or $CardElementsJson) {
+    if ([string]::IsNullOrWhiteSpace($CardTitle) -or ([string]::IsNullOrWhiteSpace($CardText) -and [string]::IsNullOrWhiteSpace($CardElementsJson))) { throw '卡片需要 CardTitle，以及 CardText 或 CardElementsJson。' }
+    if ($CardText -and $CardElementsJson) { throw 'CardText 与 CardElementsJson 不能同时提供。' }
+    if ($CardElementsJson) {
+        $elements = @($CardElementsJson | ConvertFrom-Json)
+        if ($elements.Count -eq 0) { throw 'CardElementsJson 不能为空。' }
+    } else {
+        $elements = @(@{ tag = 'text'; content = @{ type = 'markdown'; text = $CardText } })
+    }
     $payload = @{
         msgtype = 'card'
         card = @{
@@ -34,7 +42,7 @@ if ($CardTitle -or $CardSubtitle -or $CardText) {
                 title = @{ tag = 'text'; content = @{ type = 'plainText'; text = $CardTitle } }
                 subtitle = @{ tag = 'text'; content = @{ type = 'plainText'; text = $CardSubtitle } }
             }
-            elements = @(@{ tag = 'text'; content = @{ type = 'markdown'; text = $CardText } })
+            elements = $elements
         }
     }
 } elseif (-not [string]::IsNullOrWhiteSpace($Markdown)) {
