@@ -13,6 +13,7 @@ import send_daily_progress as daily
 
 COLORS = ("#3576dc", "#e5a239", "#3576dc", "#d4dae2")
 MARKS = ("▰", "▰", "▱", "▰")
+SEPARATOR = f"<font color='#d4dae2'>{'─' * 40}</font>"
 
 
 def metric_summary(records: list[dict], metric: str, target: float, cutoff: date, predicate=lambda r: True) -> dict | None:
@@ -106,17 +107,18 @@ def card_content(records: list[dict], targets: dict[str, float], cutoff: date) -
     legend = "<font color='#3576dc'>▰</font> 已回传　<font color='#e5a239'>▰</font> 未回传　<font color='#3576dc'>▱</font> 后续预测　<font color='#d4dae2'>▰</font> 预计缺口　│ 目标位置"
     return "\n\n".join([
         metric_block("血量", "万美元", revenue, targets["血量"]),
-        "──────────────",
+        SEPARATOR,
         metric_block("360 新增", "万人", users, targets["360新增"]),
-        legend,
+        SEPARATOR,
         status,
+        legend,
         f"[查看合作方新增血量]({daily.SHEET_URL})",
     ])
 
 
 def card_subtitle(cutoff: date, report_date: date) -> str:
     days = calendar.monthrange(cutoff.year, cutoff.month)[1]
-    return f"{report_date:%Y-%m-%d} · 数据截至 {cutoff:%m-%d} · 时间进度 {cutoff.day / days:.0%} · 距月末 {days - cutoff.day} 天"
+    return f"{report_date:%Y-%m-%d} · 截至 {cutoff:%m-%d} · 时间进度 {cutoff.day / days:.0%} · 距月末 {days - cutoff.day} 天"
 
 
 def main() -> None:
