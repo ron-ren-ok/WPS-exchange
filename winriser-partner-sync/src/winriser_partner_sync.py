@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -25,6 +26,39 @@ SOURCE_TO_OPERATION = {
     "wnrwpsofc_exchange": "换量弹窗",
     "wnrwps_radar": "文档雷达",
 }
+RETRIES = 3
+RETRY_DELAY = 5
+
+
+def retryable(exc):
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None) or getattr(getattr(exc, "resp", None), "status", None)
+    return status in (408, 429, 500, 502, 503, 504) or isinstance(
+        exc, (requests.Timeout, requests.ConnectionError, TimeoutError, ConnectionError)
+    )
+
+
+def retry_call(call):
+    for attempt in range(RETRIES + 1):
+        try:
+            return call()
+        except Exception as exc:
+            if not retryable(exc) or attempt == RETRIES:
+                raise
+            print(f"Transient request failure; retry {attempt + 1}/{RETRIES} in {RETRY_DELAY}s", file=sys.stderr)
+            time.sleep(RETRY_DELAY)
+
+
+def tracker_request(session, method, url, **kwargs):
+    def call():
+        response = getattr(session, method)(url, timeout=30, **kwargs)
+        response.raise_for_status()
+        return response
+    return retry_call(call)
+
+
+def sheets_execute(request):
+    return retry_call(request.execute)
 
 
 def parse_day(value):
@@ -35,7 +69,7 @@ def parse_day(value):
             return (datetime(1899, 12, 30) + timedelta(days=serial)).date()
     except ValueError:
         pass
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d.%m.%Y"):
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d.%m.%Y", "%m/%d/%Y"):
         try:
             return datetime.strptime(text, fmt).date()
         except ValueError:
@@ -59,8 +93,7 @@ def form_data(soup):
 
 
 def login(session, secret):
-    response = session.get(LOGIN_URL, timeout=30)
-    response.raise_for_status()
+    response = tracker_request(session, "get", LOGIN_URL)
     soup = BeautifulSoup(response.text, "html.parser")
     password = soup.select_one("input[type=password][name]")
     username = next((field for field in soup.select("input[type=text][name]") if field.get("name")), None)
@@ -69,43 +102,52 @@ def login(session, secret):
         raise RuntimeError("Tracker login form changed")
     data = form_data(soup)
     data.update({username["name"]: "WPS", password["name"]: secret, submit["name"]: submit.get("value", "Login")})
-    response = session.post(response.url, data=data, timeout=30)
-    response.raise_for_status()
+    response = tracker_request(session, "post", response.url, data=data)
     if "dashboard.aspx" not in response.url.lower() and "logout" not in response.text.lower():
         raise RuntimeError("Tracker login was not accepted")
 
 
-def fetch_parent_report(session):
-    response = session.get(REPORT_URL, timeout=30)
-    response.raise_for_status()
+def report_controls(session):
+    response = tracker_request(session, "get", REPORT_URL)
     soup = BeautifulSoup(response.text, "html.parser")
     source = soup.select_one("select[name='ctl00$ContentPlaceHolder1$ddSource']")
     report_date = soup.select_one("select[name='ctl00$ContentPlaceHolder1$dddate']")
     submit = soup.select_one("input[name='ctl00$ContentPlaceHolder1$btnview']")
     if not source or not report_date or not submit:
         raise RuntimeError("Tracker report controls changed")
-    data = form_data(soup)
-    data.update({source["name"]: "0", report_date["name"]: "3", submit["name"]: submit.get("value", "View Report")})
-    response = session.post(REPORT_URL, data=data, timeout=30)
-    response.raise_for_status()
-    return response.text
+    return soup, source, report_date, submit
+
+
+def fetch_parent_reports(session, include_history=False):
+    soup, source, report_date, submit = report_controls(session)
+    options = tuple(dict.fromkeys(option.get("value") for option in report_date.select("option") if option.get("value"))) if include_history else ("3",)
+    if not options:
+        raise RuntimeError("Tracker has no selectable historical date options")
+    for index, option in enumerate(options):
+        if index:
+            soup, source, report_date, submit = report_controls(session)
+        data = form_data(soup)
+        data.update({source["name"]: "0", report_date["name"]: option, submit["name"]: submit.get("value", "View Report")})
+        yield tracker_request(session, "post", REPORT_URL, data=data).text
+
+
+def fetch_parent_report(session):
+    return next(fetch_parent_reports(session))
 
 
 def fetch_child_sources(session, partner_id, day):
-    response = session.post(
-        EXPAND_URL,
+    response = tracker_request(
+        session, "post", EXPAND_URL,
         data={
             "PartnerId": str(partner_id), "SourceId": "0",
             "dateFrom": day.isoformat(), "dateTo": day.isoformat(),
             "ExpandPartner": "1", "ExpandSrc": "0", "ExpandCamp": "0", "ExpandPub": "0",
         },
-        timeout=30,
     )
-    response.raise_for_status()
     return response.text
 
 
-def parse_parent_rows(html, cutoff):
+def parse_parent_rows(html, cutoff, start=None):
     soup = BeautifulSoup(html, "html.parser")
     expected = ("Date", "Source", "Install Count", "Spend-PPI($)")
     tables = soup.find_all("table")
@@ -124,7 +166,7 @@ def parse_parent_rows(html, cutoff):
         if source != "WPS":
             continue
         day = parse_day(day_text)
-        if day > cutoff:
+        if day > cutoff or (start is not None and day < start):
             continue
         key = tr.select_one("input[name$='$key']")
         if key is None or not key.get("value"):
@@ -137,7 +179,8 @@ def parse_parent_rows(html, cutoff):
     return rows
 
 
-def parse_report(html, cutoff):
+def parse_report(html, cutoff, start=None, diagnostics=None):
+    diagnostics = diagnostics if diagnostics is not None else {}
     soup = BeautifulSoup(html, "html.parser")
     # The Tracker expand endpoint returns bare <tr> fragments rather than a table.
     rows = {}
@@ -146,15 +189,25 @@ def parse_report(html, cutoff):
         raise RuntimeError("Tracker child-source response has no rows")
     for tr in report_rows:
         cells = [cell.get_text(" ", strip=True) for cell in tr.find_all("td")]
-        if len(cells) < 5 or cells[-4] == "Date":
+        if not cells or (len(cells) >= 4 and cells[-4] == "Date"):
+            continue
+        if len(cells) < 5:
+            diagnostics["malformed_rows"] = diagnostics.get("malformed_rows", 0) + 1
             continue
         day_text, source, installs, spend = cells[-4:]
         source_key = source.strip().lower().split(" - ", 1)[0]
         operation = SOURCE_TO_OPERATION.get(source_key)
         if operation is None:  # Ignore WPS aggregate and unrelated child sources.
+            bucket = "aggregate_rows" if source_key == "wps" else "unmapped_sources"
+            if bucket == "aggregate_rows":
+                diagnostics[bucket] = diagnostics.get(bucket, 0) + 1
+            else:
+                counts = diagnostics.setdefault(bucket, {})
+                counts[source_key] = counts.get(source_key, 0) + 1
             continue
         day = parse_day(day_text)
-        if day > cutoff:
+        if day > cutoff or (start is not None and day < start):
+            diagnostics["outside_range_rows"] = diagnostics.get("outside_range_rows", 0) + 1
             continue
         key = (day, operation)
         if key in rows:
@@ -182,18 +235,20 @@ def sheets_service(service_json):
 
 
 def get_sheet(service):
-    values = service.spreadsheets().values().get(
+    values = sheets_execute(service.spreadsheets().values().get(
         spreadsheetId=SHEET_ID,
-        range=f"'{SHEET_NAME}'!A1:E10000",
+        range=f"'{SHEET_NAME}'!A:E",
         valueRenderOption="UNFORMATTED_VALUE",
         dateTimeRenderOption="SERIAL_NUMBER",
-    ).execute().get("values", [])
+    )).get("values", [])
     if not values or len(values[0]) != len(set(values[0])) or any(header not in values[0] for header in HEADERS):
         raise RuntimeError("long-format target headers are missing or duplicated")
     headers = values[0]
     positions = {header: headers.index(header) for header in HEADERS}
     rows = {}
     for row_number, row in enumerate(values[1:], start=2):
+        if str(value_at(row, positions["合作方"])).strip() != PARTNER:
+            continue
         if not row or not value_at(row, positions["日期"]):
             continue
         key = (
@@ -246,6 +301,35 @@ def plan_writes(headers, target_rows, source_rows, allow_overwrite):
 def append_rows(service, headers, records):
     if not records:
         return
+    # Append is not idempotent: a lost response can still mean the write succeeded.
+    pending = records
+    for attempt in range(RETRIES + 1):
+        try:
+            append_once(service, headers, pending)
+            return
+        except Exception as exc:
+            if not retryable(exc):
+                raise
+            print("Append response uncertain; checking target before retry", file=sys.stderr)
+            time.sleep(RETRY_DELAY)
+            fresh_headers, targets = get_sheet(service)
+            if fresh_headers != headers:
+                raise RuntimeError("target headers changed during append recovery") from exc
+            pending = []
+            positions = {header: headers.index(header) for header in HEADERS}
+            for record in records:
+                found = targets.get((record["日期"], PARTNER, record["运营位"]))
+                if found is None:
+                    pending.append(record)
+                elif any(not values_match(value_at(found, positions[h]), record[h]) for h in ("新增", "血量")):
+                    raise RuntimeError("append recovery found conflicting metrics") from exc
+            if not pending:
+                return
+            if attempt == RETRIES:
+                raise
+
+
+def append_once(service, headers, records):
     positions = {header: headers.index(header) for header in HEADERS}
     values = []
     for record in records:
@@ -265,8 +349,72 @@ def append_rows(service, headers, records):
     ).execute()
 
 
+def verify_source(service, source):
+    headers, targets = get_sheet(service)
+    positions = {header: headers.index(header) for header in HEADERS}
+    errors = []
+    for (day, operation), metrics in sorted(source.items()):
+        row = targets.get((day, PARTNER, operation))
+        if row is None:
+            errors.append(f"missing: {day}/{operation}")
+        else:
+            for header, metric in (("新增", "new_users"), ("血量", "blood_volume")):
+                if not values_match(value_at(row, positions[header]), metrics[metric]):
+                    errors.append(f"mismatch: {day}/{operation}/{header}")
+    if errors:
+        raise RuntimeError("write verification failed: " + "; ".join(errors))
+    return {"verified_records": len(source), "missing": 0, "mismatches": 0}
+
+
+def collect_source(session, cutoff, start, diagnostics):
+    parents = {}
+    for html in fetch_parent_reports(session, include_history=start is not None):
+        diagnostics["reports_fetched"] = diagnostics.get("reports_fetched", 0) + 1
+        try:
+            parsed = parse_parent_rows(html, cutoff, start)
+        except RuntimeError as exc:
+            if str(exc) not in ("Tracker returned no WPS parent rows", "Tracker child-source response has no rows", "Tracker report table headers changed"):
+                raise
+            diagnostics.setdefault("skipped_reports", []).append(str(exc))
+            continue
+        for day, partner_id in parsed.items():
+            if day in parents and parents[day] != partner_id:
+                raise RuntimeError(f"conflicting WPS parent IDs for {day}")
+            parents[day] = partner_id
+    if not parents:
+        raise RuntimeError("Tracker returned no WPS parent rows in the requested range")
+    source = {}
+    for day, partner_id in sorted(parents.items()):
+        parsed = parse_report(fetch_child_sources(session, partner_id, day), cutoff, start, diagnostics)
+        if any(parsed_day != day for parsed_day, _ in parsed):
+            raise RuntimeError(f"Tracker child response date differs from requested day {day}")
+        source.update(parsed)
+    if not source:
+        raise RuntimeError("Tracker returned no verified Winriser child-source rows")
+    return source, parents
+
+
+def coverage_summary(source, parents, cutoff, start, diagnostics):
+    days = sorted({day for day, _ in source})
+    requested_start = start if start is not None else min(parents)
+    expected_days = [requested_start + timedelta(days=i) for i in range((cutoff - requested_start).days + 1)]
+    missing_days = [day.isoformat() for day in expected_days if day not in days]
+    missing_records = [{"date": day.isoformat(), "operation": operation} for day in expected_days for operation in SOURCE_TO_OPERATION.values() if (day, operation) not in source]
+    latest = {operation: max((day for day, op in source if op == operation), default=None) for operation in SOURCE_TO_OPERATION.values()}
+    return {
+        "status": "partial" if missing_records or diagnostics.get("malformed_rows") or diagnostics.get("skipped_reports") else "complete",
+        "requested_range": {"start": start.isoformat() if start else None, "end": cutoff.isoformat(), "mode": "explicit" if start else "tracker_default"},
+        "actual_range": {"start": days[0].isoformat(), "end": days[-1].isoformat(), "dates": [day.isoformat() for day in days]},
+        "latest_by_operation": {op: day.isoformat() if day else None for op, day in latest.items()},
+        "missing_dates": missing_days, "missing_records": missing_records,
+        "zero_records": [{"date": day.isoformat(), "operation": op} for (day, op), m in sorted(source.items()) if m["new_users"] == 0 and m["blood_volume"] == 0],
+        "diagnostics": diagnostics,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--start-date")
     parser.add_argument("--end-date")
     parser.add_argument("--allow-overwrite", action="store_true")
     args = parser.parse_args()
@@ -275,22 +423,23 @@ def main():
     if not secret or not service_json:
         raise RuntimeError("missing required GitHub Actions secret")
     cutoff = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
+    start = parse_day(args.start_date) if args.start_date else None
+    if start is not None and start > cutoff:
+        raise RuntimeError("start date is after end date")
+    diagnostics = {}
     with requests.Session() as session:
         session.headers["User-Agent"] = "WPS partner data sync/1.0"
         login(session, secret)
-        parents = parse_parent_rows(fetch_parent_report(session), cutoff)
-        source = {}
-        for day, partner_id in parents.items():
-            source.update(parse_report(fetch_child_sources(session, partner_id, day), cutoff))
-    if not source:
-        raise RuntimeError("Tracker returned no verified Winriser child-source rows")
+        source, parents = collect_source(session, cutoff, start, diagnostics)
+    summary = coverage_summary(source, parents, cutoff, start, diagnostics)
     service = sheets_service(service_json)
     headers, target_rows = get_sheet(service)
     updates, appends, overwrites = plan_writes(headers, target_rows, source, args.allow_overwrite)
     if updates:
-        service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
+        sheets_execute(service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}))
     append_rows(service, headers, appends)
-    print(json.dumps({"source_records": [{"date": day.isoformat(), "operation": operation} for day, operation in sorted(source)], "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
+    summary.update({"source_records": [{"date": day.isoformat(), "operation": operation} for day, operation in sorted(source)], "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites, "verification": verify_source(service, source)})
+    print(json.dumps(summary, ensure_ascii=False))
 
 
 if __name__ == "__main__":
