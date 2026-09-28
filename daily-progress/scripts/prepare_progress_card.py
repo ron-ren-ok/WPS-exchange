@@ -31,7 +31,7 @@ def metric_summary(records: list[dict], metric: str, target: float, cutoff: date
     return {"actual": actual, "projected": projected, "target": target, "parts": [max(v, 0) for v in parts]}
 
 
-def bar_parts(summary: dict, width: int = 20) -> list[int]:
+def bar_parts(summary: dict, width: int = 12) -> list[int]:
     """Largest remainder allocation keeps the bar length and zero-gap invariant."""
     if width < 1:
         raise ValueError("Progress bar width must be positive.")

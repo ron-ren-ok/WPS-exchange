@@ -19,7 +19,7 @@ class ProgressCardTests(unittest.TestCase):
 
     def test_success_has_no_gray_tail_and_one_target_marker(self):
         s = self.summary(40, 45, 60, 30)
-        self.assertEqual(CARD.bar_parts(s), [13, 2, 5, 0])
+        self.assertEqual(CARD.bar_parts(s), [8, 1, 3, 0])
         self.assertNotIn(CARD.COLORS[3], CARD.progress_bar(s))
         self.assertEqual(CARD.progress_bar(s).count("│"), 1)
 
@@ -34,12 +34,12 @@ class ProgressCardTests(unittest.TestCase):
     def test_shortfall_and_tiny_shortfall_keep_visible_gap(self):
         for s in [self.summary(50, 60, 70, 100), self.summary(99.9, 99.9, 99.9, 100)]:
             self.assertGreater(CARD.bar_parts(s)[3], 0)
-            self.assertEqual(sum(CARD.bar_parts(s)), 20)
+            self.assertEqual(sum(CARD.bar_parts(s)), 12)
             self.assertIn(CARD.COLORS[3], CARD.progress_bar(s))
 
     def test_exact_target_and_zero_prediction(self):
-        self.assertEqual(CARD.bar_parts(self.summary(100, 100, 100, 100)), [20, 0, 0, 0])
-        self.assertEqual(CARD.bar_parts(self.summary(0, 0, 0, 100)), [0, 0, 0, 20])
+        self.assertEqual(CARD.bar_parts(self.summary(100, 100, 100, 100)), [12, 0, 0, 0])
+        self.assertEqual(CARD.bar_parts(self.summary(0, 0, 0, 100)), [0, 0, 0, 12])
 
     def test_confirmed_copy_and_paragraph_breaks(self):
         blood = CARD.metric_block("血量", "万美元", self.summary(40, 45, 60, 30), 30)
@@ -132,7 +132,7 @@ class ProgressCardTests(unittest.TestCase):
         bars = [line for line in text.split("\n\n") if "│" in line and "<font" in line and "目标位置" not in line]
         self.assertEqual(len(bars), 2)
         for bar in bars:
-            self.assertEqual(len(re.sub(r"<[^>]*>", "", bar).replace("│", "")), 20)
+            self.assertEqual(len(re.sub(r"<[^>]*>", "", bar).replace("│", "")), 12)
 
 
 if __name__ == "__main__":
