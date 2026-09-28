@@ -70,27 +70,26 @@ def progress_bar(summary: dict) -> str:
 
 def metric_block(label: str, unit: str, summary: dict | None, target: float) -> str:
     if summary is None:
-        return f"**{label}（{unit}）**\n\n当月尚未回传，暂不预测\n\n月目标 {target:.2f}"
+        return f"**{label}（月目标 {target:.2f}）**\n\n当月尚未回传，暂不预测"
     actual, projected = summary["actual"], summary["projected"]
+    measured = actual + summary["parts"][1]
     actual_rate, projected_rate = actual / target * 100, projected / target * 100
     status = "✅ 实际已达标" if actual >= target else ("🟢 预计达标" if projected >= target else "🔴 预计未达标")
     if projected < target:
         outcome = f"**预计缺口 {target - projected:.2f} {unit}**"
     elif actual >= target:
-        # 血量 section already specifies 万美元; keep the user's concise wording.
+        # Keep the user's confirmed concise outcome wording.
         outcome_unit = "万" if label == "血量" else unit
         outcome = f"**实际超目标 {actual - target:.2f} {outcome_unit} · 预计超目标 {projected - target:.2f} {outcome_unit}**"
     else:
         outcome_unit = "万" if label == "血量" else unit
         outcome = f"**预计超目标 {projected - target:.2f} {outcome_unit}**"
     return "\n\n".join([
-        f"**{label}（{unit}）**　{status}",
-        f"已回传累计 **{actual:.2f}**　·　月底预测 **{projected:.2f}**",
+        f"**{label}（月目标 {target:.2f}）**　{status}",
+        f"已回传 **{actual:.2f}**　·　预测回传 **{measured:.2f}**　·　月底预测 **{projected:.2f}**",
         f"实际完成率 {actual_rate:.1f}%　·　预计完成率 {projected_rate:.1f}%",
-        f"月目标 **{target:.2f}**　·　│ 目标位置",
         progress_bar(summary),
         outcome,
-        f"已回传 {actual:.2f}　·　未回传 {summary['parts'][1]:.2f}　·　后续预测 {summary['parts'][2]:.2f}",
     ])
 
 
@@ -104,9 +103,10 @@ def card_content(records: list[dict], targets: dict[str, float], cutoff: date) -
     returned = {r["partner"] for r in monthly if r["date"] == cutoff}
     missing = [p for p in partners if p not in returned]
     status = f"⚠ 数据不全 · {len(missing)} 个合作方\n\n{'、'.join(missing)}" if missing else "✅ 数据完整"
-    legend = "<font color='#3576dc'>▰</font> 已回传　<font color='#e5a239'>▰</font> 未回传　<font color='#3576dc'>▱</font> 后续预测　<font color='#d4dae2'>▰</font> 预计缺口"
+    legend = "<font color='#3576dc'>▰</font> 已回传　<font color='#e5a239'>▰</font> 未回传　<font color='#3576dc'>▱</font> 后续预测　<font color='#d4dae2'>▰</font> 预计缺口　│ 目标位置"
     return "\n\n".join([
         metric_block("血量", "万美元", revenue, targets["血量"]),
+        "──────────────",
         metric_block("360 新增", "万人", users, targets["360新增"]),
         legend,
         status,

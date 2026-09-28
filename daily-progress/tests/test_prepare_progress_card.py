@@ -46,7 +46,14 @@ class ProgressCardTests(unittest.TestCase):
         users = CARD.metric_block("360 新增", "万人", self.summary(50, 60, 70, 100), 100)
         self.assertIn("实际超目标 10.00 万 · 预计超目标 30.00 万", blood)
         self.assertIn("预计缺口 30.00 万人", users)
+        self.assertIn("**血量（月目标 30.00）**", blood)
+        self.assertIn("**360 新增（月目标 100.00）**", users)
+        self.assertIn("已回传 **40.00**　·　预测回传 **45.00**　·　月底预测 **60.00**", blood)
+        self.assertIn("已回传 **50.00**　·　预测回传 **60.00**　·　月底预测 **70.00**", users)
         for block in [blood, users]:
+            self.assertNotIn("已回传累计", block)
+            self.assertNotIn("　·　未回传", block)
+            self.assertNotIn("目标位置", block)
             self.assertNotIn("未回传估算", block)
             self.assertNotIn("日均", block)
             self.assertNotIn("灰色：", block)
@@ -64,9 +71,12 @@ class ProgressCardTests(unittest.TestCase):
         ]
         text = CARD.card_content(records, {"血量": 20, "360新增": 60}, date(2026, 9, 2))
         self.assertIn("⚠ 数据不全 · 1 个合作方\n\n360", text)
-        self.assertIn("已回传累计 **1.00**", text)
+        self.assertIn("已回传 **1.00**　·　预测回传 **2.00**", text)
         self.assertIn("月底预测 **30.00**", text)
-        self.assertIn("已回传累计 **2.00**", text)
+        self.assertIn("已回传 **2.00**　·　预测回传 **2.00**", text)
+        self.assertEqual(text.count("目标位置"), 1)
+        self.assertIn("预计缺口　│ 目标位置", text)
+        self.assertLess(text.index("──────────────"), text.index("**360 新增"))
         self.assertNotIn("990", text)
         self.assertNotIn("![]", text)
         self.assertNotIn("data:image", text)
@@ -90,7 +100,7 @@ class ProgressCardTests(unittest.TestCase):
         records = [{"date": date(2026, 9, 2), "partner": "360", "operation": "气泡", "新增": 10000, "血量": 10000}]
         text = CARD.card_content(records, {"血量": 10, "360新增": 60}, date(2026, 9, 2))
         self.assertLess(len(text.encode("utf-8")), 5000)
-        bars = [line for line in text.split("\n\n") if "│" in line and "<font" in line]
+        bars = [line for line in text.split("\n\n") if "│" in line and "<font" in line and "目标位置" not in line]
         self.assertEqual(len(bars), 2)
         for bar in bars:
             self.assertEqual(len(re.sub(r"<[^>]*>", "", bar).replace("│", "")), 20)
