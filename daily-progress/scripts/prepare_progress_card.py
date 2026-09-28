@@ -77,15 +77,16 @@ def metric_block(label: str, unit: str, summary: dict | None, target: float) -> 
     measured = actual + summary["parts"][1]
     actual_rate, projected_rate = actual / target * 100, projected / target * 100
     status = "✅ 实际已达标" if actual >= target else ("🟢 预计达标" if projected >= target else "🔴 预计未达标")
-    if projected < target:
-        outcome = f"**预计缺口 {target - projected:.2f} {unit}**"
-    elif actual >= target:
-        # Keep the user's confirmed concise outcome wording.
-        outcome_unit = "万" if label == "血量" else unit
-        outcome = f"**实际超目标 {actual - target:.2f} {outcome_unit} · 预计超目标 {projected - target:.2f} {outcome_unit}**"
-    else:
-        outcome_unit = "万" if label == "血量" else unit
-        outcome = f"**预计超目标 {projected - target:.2f} {outcome_unit}**"
+    outcome_unit = "万" if label == "血量" else unit
+
+    def target_difference(prefix: str, value: float) -> str:
+        if value < target:
+            return f"{prefix}缺口 {target - value:.2f} {outcome_unit}"
+        if value > target:
+            return f"{prefix}超目标 {value - target:.2f} {outcome_unit}"
+        return f"{prefix}已达标"
+
+    outcome = f"**{target_difference('实际', actual)} · {target_difference('预计', projected)}**"
     return "\n\n".join([
         f"**{label}（月目标 {target:.2f}）**　{status}",
         f"已回传 **{actual:.2f}**　·　预测回传 **{measured:.2f}**　·　月底预测 **{projected:.2f}**",
@@ -118,7 +119,7 @@ def card_elements(records: list[dict], targets: dict[str, float], cutoff: date) 
     return [
         text_element(metric_block("血量", "万美元", revenue, targets["血量"])),
         {"tag": "hr", "style": "solid"},
-        text_element(metric_block("360 新增", "万人", users, targets["360新增"])),
+        text_element(metric_block("360 新增", "万", users, targets["360新增"])),
         {"tag": "hr", "style": "solid"},
         text_element("\n\n".join([status, legend, f"[查看合作方新增血量]({daily.SHEET_URL})"])),
     ]
