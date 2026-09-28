@@ -13,6 +13,7 @@ import send_daily_progress as daily
 
 COLORS = ("#3576dc", "#e5a239", "#3576dc", "#d4dae2")
 MARKS = ("▰", "▰", "▱", "▰")
+TEXT_GRAY = "#8c8c8c"
 SEPARATOR = f"<font color='#d4dae2'>{'─' * 40}</font>"
 
 
@@ -103,8 +104,14 @@ def card_content(records: list[dict], targets: dict[str, float], cutoff: date) -
     partners = sorted({r["partner"] for r in monthly} | {"360"})
     returned = {r["partner"] for r in monthly if r["date"] == cutoff}
     missing = [p for p in partners if p not in returned]
-    status = f"⚠ 数据不全 · {len(missing)} 个合作方\n\n{'、'.join(missing)}" if missing else "✅ 数据完整"
-    legend = "<font color='#3576dc'>▰</font> 已回传　<font color='#e5a239'>▰</font> 未回传　<font color='#3576dc'>▱</font> 后续预测　<font color='#d4dae2'>▰</font> 预计缺口　│ 目标位置"
+    def gray(text: str) -> str:
+        return f"<font color='{TEXT_GRAY}'>{text}</font>"
+
+    status = "\n\n".join([gray(f"⚠ 数据不全 · {len(missing)} 个合作方"), gray('、'.join(missing))]) if missing else gray("✅ 数据完整")
+    legend = "　".join([
+        f"<font color='{color}'>{mark}</font> {gray(label)}"
+        for color, mark, label in zip(COLORS, MARKS, ("已回传", "未回传", "后续预测", "预计缺口"))
+    ]) + "　" + gray("│ 目标位置")
     return "\n\n".join([
         metric_block("血量", "万美元", revenue, targets["血量"]),
         SEPARATOR,
@@ -118,7 +125,7 @@ def card_content(records: list[dict], targets: dict[str, float], cutoff: date) -
 
 def card_subtitle(cutoff: date, report_date: date) -> str:
     days = calendar.monthrange(cutoff.year, cutoff.month)[1]
-    return f"{report_date:%Y-%m-%d} · 截至 {cutoff:%m-%d} · 时间进度 {cutoff.day / days:.0%} · 距月末 {days - cutoff.day} 天"
+    return f"{report_date:%Y-%m-%d} · 时间进度 {cutoff.day / days:.0%} · 距月末 {days - cutoff.day} 天"
 
 
 def main() -> None:

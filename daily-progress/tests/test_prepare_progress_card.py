@@ -70,18 +70,21 @@ class ProgressCardTests(unittest.TestCase):
             {"date": date(2026, 9, 3), "partner": "360", "operation": "气泡", "新增": 990000, "血量": None},
         ]
         text = CARD.card_content(records, {"血量": 20, "360新增": 60}, date(2026, 9, 2))
-        self.assertIn("⚠ 数据不全 · 1 个合作方\n\n360", text)
+        plain = re.sub(r"<[^>]*>", "", text)
+        self.assertIn("⚠ 数据不全 · 1 个合作方\n\n360", plain)
+        for gray_text in ["⚠ 数据不全 · 1 个合作方", "360", "已回传", "未回传", "后续预测", "预计缺口", "│ 目标位置"]:
+            self.assertIn(f"<font color='#8c8c8c'>{gray_text}</font>", text)
         self.assertIn("已回传 **1.00**　·　预测回传 **2.00**", text)
         self.assertIn("月底预测 **30.00**", text)
         self.assertIn("已回传 **2.00**　·　预测回传 **2.00**", text)
         self.assertEqual(text.count("目标位置"), 1)
-        self.assertIn("预计缺口　│ 目标位置", text)
+        self.assertIn("预计缺口　│ 目标位置", plain)
         self.assertEqual(text.count(CARD.SEPARATOR), 2)
         self.assertIn("<font color='#d4dae2'>" + "─" * 40 + "</font>", text)
         self.assertLess(text.index(CARD.SEPARATOR), text.index("**360 新增"))
         self.assertLess(text.index("**360 新增"), text.rindex(CARD.SEPARATOR))
         self.assertLess(text.rindex(CARD.SEPARATOR), text.index("⚠ 数据不全"))
-        self.assertIn("⚠ 数据不全 · 1 个合作方\n\n360\n\n<font", text)
+        self.assertIn("⚠ 数据不全 · 1 个合作方\n\n360\n\n▰ 已回传", plain)
         self.assertLess(text.index("⚠ 数据不全"), text.index("目标位置"))
         self.assertNotIn("990", text)
         self.assertNotIn("![]", text)
@@ -91,7 +94,7 @@ class ProgressCardTests(unittest.TestCase):
         records = [{"date": date(2026, 9, 2), "partner": "Avast", "operation": "气泡", "新增": 100, "血量": 10000}]
         text = CARD.card_content(records, {"血量": 10, "360新增": 60}, date(2026, 9, 2))
         self.assertIn("当月尚未回传，暂不预测", text)
-        self.assertIn("⚠ 数据不全 · 1 个合作方\n\n360", text)
+        self.assertIn("⚠ 数据不全 · 1 个合作方\n\n360", re.sub(r"<[^>]*>", "", text))
 
     def test_no_month_data_or_invalid_target_fails(self):
         with self.assertRaises(ValueError):
@@ -100,7 +103,7 @@ class ProgressCardTests(unittest.TestCase):
             CARD.metric_summary([], "血量", 0, date(2026, 9, 2))
 
     def test_month_end_subtitle_has_no_remaining_days(self):
-        self.assertEqual("2026-10-01 · 截至 09-30 · 时间进度 100% · 距月末 0 天", CARD.card_subtitle(date(2026, 9, 30), date(2026, 10, 1)))
+        self.assertEqual("2026-10-01 · 时间进度 100% · 距月末 0 天", CARD.card_subtitle(date(2026, 9, 30), date(2026, 10, 1)))
 
     def test_generated_message_fits_webhook_limit(self):
         records = [{"date": date(2026, 9, 2), "partner": "360", "operation": "气泡", "新增": 10000, "血量": 10000}]
