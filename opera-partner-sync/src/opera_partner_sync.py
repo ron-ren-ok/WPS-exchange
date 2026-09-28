@@ -24,6 +24,7 @@ GX_PARTNER = "Opera GX"
 GX_SURFACES = {
     "bubble": {"utm_content": "toast", "operation": "气泡"},
     "popup": {"utm_content": "bundle", "operation": "换量弹窗"},
+    "recall": {"utm_content": "recall", "operation": "卸载引导"},
 }
 HEADERS = ("日期", "合作方", "运营位", "新增", "血量")
 PARTNER = "Opera"

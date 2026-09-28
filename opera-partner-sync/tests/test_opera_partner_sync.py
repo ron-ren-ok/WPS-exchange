@@ -3,6 +3,7 @@ import unittest
 from email.message import EmailMessage
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 MODULE = Path(__file__).resolve().parents[1] / "src" / "opera_partner_sync.py"
 SPEC = importlib.util.spec_from_file_location("opera", MODULE)
@@ -46,6 +47,39 @@ Day Utm Content New Users Revenue
 """
         self.assertEqual(OPERA.parse_opera_gx_text(gx, "bundle")[date(2026, 9, 1)], {"new_users": 5508, "blood_volume": 706.46})
         self.assertEqual(OPERA.parse_opera_gx_text(gx, "toast")[date(2026, 9, 1)], {"new_users": 468, "blood_volume": 156.93})
+
+    def test_gx_recall_routes_to_uninstall_guidance(self):
+        gx = """Summary table
+Day Utm Content New Users Revenue
+1 2026-09-27 toast 100 $10.00
+2 2026-09-27 bundle 200 $20.00
+3 2026-09-27 recall 1,234 $56.78
+"""
+        day = date(2026, 9, 27)
+        with patch.object(OPERA, "gx_messages", return_value=[{"From": OPERA.SENDER}]), \
+             patch.object(OPERA, "attachments", return_value=[b"pdf"]), \
+             patch.object(OPERA, "parse_opera_gx_pdf", side_effect=lambda _pdf, content: OPERA.parse_opera_gx_text(gx, content)):
+            sources = {surface: OPERA.gx_source_rows(object(), surface, day, day) for surface in OPERA.GX_SURFACES}
+        headers = ["日期", "合作方", "运营位", "新增", "血量"]
+        existing = {(day, "Opera GX", "气泡"): {"row": 10, "values": [day, "Opera GX", "气泡", 100, 10]},
+                    (day, "Opera GX", "换量弹窗"): {"row": 11, "values": [day, "Opera GX", "换量弹窗", 200, 20]}}
+        updates, appends, overwrites = OPERA.gx_plan_writes(headers, existing, sources, allow_overwrite=False)
+        self.assertEqual(updates, [])
+        self.assertEqual(overwrites, [])
+        self.assertEqual(appends, [{"日期": day, "合作方": "Opera GX", "运营位": "卸载引导", "新增": 1234, "血量": 56.78}])
+
+    def test_gx_missing_recall_does_not_create_zero_rows(self):
+        gx = """Summary table
+Day Utm Content New Users Revenue
+1 2026-09-27 toast 100 $10.00
+"""
+        day = date(2026, 9, 27)
+        with patch.object(OPERA, "gx_messages", return_value=[{"From": OPERA.SENDER}]), \
+             patch.object(OPERA, "attachments", return_value=[b"pdf"]), \
+             patch.object(OPERA, "parse_opera_gx_pdf", side_effect=lambda _pdf, content: OPERA.parse_opera_gx_text(gx, content)):
+            source = OPERA.gx_source_rows(object(), "recall", day, day)
+        self.assertEqual(source, {})
+        self.assertEqual(OPERA.gx_plan_writes(list(OPERA.HEADERS), {}, {"recall": source}, allow_overwrite=False), ([], [], []))
 
 
     def test_gx_fetches_only_the_latest_matching_message(self):
