@@ -10,6 +10,7 @@ import re
 import sys
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+from time import perf_counter
 
 import pdfplumber
 
@@ -58,30 +59,46 @@ def number(value):
     return int(parsed) if parsed.is_integer() else parsed
 
 
-def parse_opera_text(text, campaign):
-    """Extract exactly one Summary table row per requested campaign/date."""
-    if "Summary table" not in text or "Day Campaign New Users Revenue" not in text:
-        raise ValueError("Opera Summary table headers were not found")
+def parse_dashboard_text(text, gx=False):
+    """Parse all operating positions from a single text extraction."""
+    label = "OperaGX" if gx else "Opera"
+    dimension = "Utm Content" if gx else "Campaign"
+    if "Summary table" not in text or f"Day {dimension} New Users Revenue" not in text:
+        raise ValueError(f"{label} Summary table headers were not found")
+    specs = GX_SURFACES if gx else SURFACES
+    field = "utm_content" if gx else "campaign"
+    by_content = {spec[field]: surface for surface, spec in specs.items()}
+    contents = "|".join(re.escape(content) for content in by_content)
     pattern = re.compile(
-        r"(?m)^\d+\s+(\d{4}-\d{2}-\d{2})\s+(wpstest2/opera\.exe|wpstest)\s+([\d,]+)\s+\$([\d,]+(?:\.\d+)?)\s*$"
+        rf"(?m)^\d+\s+(\d{{4}}-\d{{2}}-\d{{2}})\s+({contents})\s+([\d,]+)\s+\$([\d,]+(?:\.\d+)?)\s*$"
     )
-    rows = {}
-    for day_text, observed_campaign, new_users, revenue in pattern.findall(text):
-        if observed_campaign != campaign:
-            continue
+    sources = {surface: {} for surface in specs}
+    for day_text, content, new_users, revenue in pattern.findall(text):
         day = parse_day(day_text)
+        rows = sources[by_content[content]]
         if day in rows:
-            raise ValueError(f"Opera duplicate {campaign} row for {day}")
+            raise ValueError(f"{label} duplicate {content} row for {day}")
         rows[day] = {"new_users": number(new_users), "blood_volume": number(revenue)}
-    if not rows:
+    return sources
+
+
+def extract_pdf_text(raw_pdf):
+    # Current Looker dashboards are single-page PDFs. Read every page if the
+    # layout changes, so a Summary table continued on another page is retained.
+    with pdfplumber.open(io.BytesIO(raw_pdf)) as pdf:
+        return "\n".join(page.extract_text() or "" for page in pdf.pages)
+
+
+def parse_opera_text(text, campaign):
+    sources = parse_dashboard_text(text)
+    surface = next(key for key, spec in SURFACES.items() if spec["campaign"] == campaign)
+    if not sources[surface]:
         raise ValueError(f"Opera Summary table has no {campaign} rows")
-    return rows
+    return sources[surface]
 
 
 def parse_opera_pdf(raw_pdf, campaign):
-    with pdfplumber.open(io.BytesIO(raw_pdf)) as pdf:
-        text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-    return parse_opera_text(text, campaign)
+    return parse_opera_text(extract_pdf_text(raw_pdf), campaign)
 
 
 def gmail_imap_client(username, app_password):
@@ -121,38 +138,87 @@ def select_all_mail(client):
         raise RuntimeError(f"Gmail IMAP could not open mailbox: {mailbox}")
 
 
-def imap_messages(client):
+def imap_date(day):
+    months = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    return f"{day.day:02d}-{months[day.month - 1]}-{day.year}"
+
+
+def imap_messages(client, since=None, subject=SUBJECT, include_history=True):
     select_all_mail(client)
-    status, data = client.uid("search", None, "SUBJECT", f'"{SUBJECT}"')
+    criteria = ["FROM", SENDER, "SUBJECT", f'"{subject}"']
+    if since is not None:
+        criteria.extend(["SINCE", imap_date(since)])
+    status, data = client.uid("search", None, *criteria)
     if status != "OK":
         raise RuntimeError("Gmail IMAP subject search failed")
-    for uid in reversed(data[0].split()):
+    uids = data[0].split()
+    if not uids:
+        return
+    selected = reversed(uids) if include_history else (uids[-1],)
+    for uid in selected:
         status, payload = client.uid("fetch", uid, "(RFC822)")
         if status != "OK" or not payload or not isinstance(payload[0], tuple):
             continue
         yield email.message_from_bytes(payload[0][1])
 
 
-def source_rows(client, surface, start, end):
-    spec = SURFACES[surface]
-    resolved = {}
-    for message in imap_messages(client):
+def gx_messages(client, since=None, include_history=False):
+    return imap_messages(client, since=since, subject=GX_SUBJECT, include_history=include_history)
+
+
+def dashboard_source_rows(client, start, end, gx=False, since=None, include_history=True):
+    """Download each message once and extract each PDF once for all surfaces."""
+    started = perf_counter()
+    specs = GX_SURFACES if gx else SURFACES
+    sources = {surface: {} for surface in specs}
+    expected = {start + timedelta(days=i) for i in range((end - start).days + 1)}
+    compatible = fetched = parsed = skipped = 0
+    extract_seconds = 0.0
+    messages = gx_messages(client, since=since, include_history=include_history) if gx else imap_messages(client, since=since, include_history=include_history)
+    for message in messages:
+        fetched += 1
         if SENDER not in message.get("From", "").lower():
             continue
         for raw_pdf in attachments(message):
-            for day, metrics in parse_opera_pdf(raw_pdf, spec["campaign"]).items():
-                if start <= day <= end and day not in resolved:
-                    resolved[day] = metrics
-    if not resolved:
-        raise RuntimeError(f"no verified {surface} Opera PDF rows in the requested date range")
-    unavailable = [start + timedelta(days=i) for i in range((end - start).days + 1) if start + timedelta(days=i) not in resolved]
+            extraction_started = perf_counter()
+            text = extract_pdf_text(raw_pdf)
+            extract_seconds += perf_counter() - extraction_started
+            parsed += 1
+            try:
+                report = parse_dashboard_text(text, gx=gx)
+            except ValueError as exc:
+                if "Summary table headers were not found" not in str(exc):
+                    raise
+                skipped += 1
+                continue
+            compatible += 1
+            for surface, rows in report.items():
+                for day, metrics in rows.items():
+                    if start <= day <= end:
+                        sources[surface].setdefault(day, metrics)
+        # Read every attachment in this message before deciding to stop.
+        if all(expected <= set(rows) for rows in sources.values()):
+            break
+    if not compatible:
+        raise RuntimeError(f"no compatible {'OperaGX' if gx else 'Opera'} PDF attachments found")
+    if not gx:
+        for surface, rows in sources.items():
+            if not rows:
+                raise RuntimeError(f"no verified {surface} Opera PDF rows in the requested date range")
     print(json.dumps({
-        "surface": surface,
-        "available_days": len(resolved),
-        "unavailable_day_count": len(unavailable),
-        "first_unavailable_day": unavailable[0].isoformat() if unavailable else None,
+        "partner": GX_PARTNER if gx else PARTNER,
+        "fetched_messages": fetched,
+        "parsed_pdfs": parsed,
+        "skipped_incompatible_attachments": skipped,
+        "source_seconds": round(perf_counter() - started, 3),
+        "pdf_extract_seconds": round(extract_seconds, 3),
+        "surfaces": {surface: {"available_days": len(rows), "unavailable_day_count": len(expected - set(rows))} for surface, rows in sources.items()},
     }, ensure_ascii=False))
-    return resolved
+    return sources
+
+
+def source_rows(client, surface, start, end):
+    return dashboard_source_rows(client, start, end)[surface]
 
 
 def col_name(index):
@@ -263,102 +329,20 @@ def append_rows(service, headers, records):
     ).execute()
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--start-date")
-    parser.add_argument("--end-date")
-    parser.add_argument("--allow-overwrite", action="store_true")
-    args = parser.parse_args()
-    secrets = {name: os.environ.get(name) for name in ("GMAIL_IMAP_USERNAME", "GMAIL_APP_PASSWORD", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON")}
-    if not all(secrets.values()):
-        raise RuntimeError("missing required GitHub Actions secret")
-    end = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
-    sheets = sheets_service(secrets["GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"])
-    headers, target_rows = get_sheet(sheets)
-    start = parse_day(args.start_date) if args.start_date else first_missing(target_rows, end)
-    if start > end:
-        raise RuntimeError("start date is after end date")
-    gmail = gmail_imap_client(secrets["GMAIL_IMAP_USERNAME"], secrets["GMAIL_APP_PASSWORD"])
-    try:
-        sources = {surface: source_rows(gmail, surface, start, end) for surface in SURFACES}
-    finally:
-        gmail.logout()
-    updates, appends, overwrites = plan_writes(headers, target_rows, sources, args.allow_overwrite)
-    if updates:
-        sheets.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
-    append_rows(sheets, headers, appends)
-    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
-
-
 def parse_opera_gx_text(text, utm_content):
-    if "Summary table" not in text or "Day Utm Content New Users Revenue" not in text:
-        raise ValueError("OperaGX Summary table headers were not found")
-    pattern = re.compile(rf"(?m)^\d+\s+(\d{{4}}-\d{{2}}-\d{{2}})\s+({re.escape(utm_content)})\s+([\d,]+)\s+\$([\d,]+(?:\.\d+)?)\s*$")
-    rows = {}
-    for day_text, _content, new_users, revenue in pattern.findall(text):
-        day = parse_day(day_text)
-        if day in rows:
-            raise ValueError(f"OperaGX duplicate {utm_content} row for {day}")
-        rows[day] = {"new_users": number(new_users), "blood_volume": number(revenue)}
-    if not rows:
+    sources = parse_dashboard_text(text, gx=True)
+    surface = next(key for key, spec in GX_SURFACES.items() if spec["utm_content"] == utm_content)
+    if not sources[surface]:
         raise ValueError(f"OperaGX Summary table has no {utm_content} rows")
-    return rows
+    return sources[surface]
 
 
 def parse_opera_gx_pdf(raw_pdf, utm_content):
-    with pdfplumber.open(io.BytesIO(raw_pdf)) as pdf:
-        text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-    return parse_opera_gx_text(text, utm_content)
-
-
-def gx_messages(client):
-    select_all_mail(client)
-    status, data = client.uid("search", None, "FROM", SENDER, "SUBJECT", f'"{GX_SUBJECT}"')
-    if status != "OK":
-        raise RuntimeError("Gmail IMAP subject search failed")
-    uids = data[0].split()
-    if not uids:
-        return
-    # Looker dashboards are rolling reports.  Only the latest matching message
-    # represents the current source of truth; older PDFs must not fill gaps.
-    status, payload = client.uid("fetch", uids[-1], "(RFC822)")
-    if status == "OK" and payload and isinstance(payload[0], tuple):
-        yield email.message_from_bytes(payload[0][1])
+    return parse_opera_gx_text(extract_pdf_text(raw_pdf), utm_content)
 
 
 def gx_source_rows(client, surface, start, end):
-    resolved = {}
-    compatible_attachments = 0
-    skipped_attachments = 0
-    utm_content = GX_SURFACES[surface]["utm_content"]
-    for message in gx_messages(client):
-        if SENDER not in message.get("From", "").lower():
-            continue
-        for raw_pdf in attachments(message):
-            try:
-                metrics_by_day = parse_opera_gx_pdf(raw_pdf, utm_content)
-            except ValueError as exc:
-                detail = str(exc)
-                if "OperaGX Summary table headers were not found" in detail:
-                    skipped_attachments += 1
-                    continue
-                if f"OperaGX Summary table has no {utm_content} rows" in detail:
-                    compatible_attachments += 1
-                    continue
-                raise
-            compatible_attachments += 1
-            for day, metrics in metrics_by_day.items():
-                if start <= day <= end and day not in resolved:
-                    resolved[day] = metrics
-    if not compatible_attachments:
-        raise RuntimeError(f"no compatible OperaGX PDF attachments found for {surface}")
-    print(json.dumps({
-        "partner": GX_PARTNER,
-        "surface": surface,
-        "available_days": len(resolved),
-        "skipped_incompatible_attachments": skipped_attachments,
-    }, ensure_ascii=False))
-    return resolved
+    return dashboard_source_rows(client, start, end, gx=True, include_history=False)[surface]
 
 
 def gx_first_missing(rows, cutoff):
@@ -407,15 +391,20 @@ def main():
     secrets = {name: os.environ.get(name) for name in ("GMAIL_IMAP_USERNAME", "GMAIL_APP_PASSWORD", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON")}
     if not all(secrets.values()):
         raise RuntimeError("missing required GitHub Actions secret")
-    end = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    end = parse_day(args.end_date) if args.end_date else today - timedelta(days=1)
     sheets = sheets_service(secrets["GOOGLE_SHEET_SERVICE_ACCOUNT_JSON"])
     headers, target_rows = get_sheet(sheets)
-    opera_start = parse_day(args.start_date) if args.start_date else first_missing(target_rows, end)
-    gx_start = parse_day(args.start_date) if args.start_date else gx_first_missing(target_rows, end)
+    start = parse_day(args.start_date) if args.start_date else end - timedelta(days=2)
+    if start > end:
+        raise RuntimeError("start date is after end date")
+    explicit_range = bool(args.start_date or args.end_date)
+    # Reports received after the requested end may still contain its data.
+    mail_since = start if explicit_range else today - timedelta(days=6)
     gmail = gmail_imap_client(secrets["GMAIL_IMAP_USERNAME"], secrets["GMAIL_APP_PASSWORD"])
     try:
-        opera_sources = {surface: source_rows(gmail, surface, opera_start, end) for surface in SURFACES}
-        gx_sources = {surface: gx_source_rows(gmail, surface, gx_start, end) for surface in GX_SURFACES}
+        opera_sources = dashboard_source_rows(gmail, start, end, since=mail_since)
+        gx_sources = dashboard_source_rows(gmail, start, end, gx=True, since=mail_since, include_history=explicit_range)
     finally:
         gmail.logout()
     updates, appends, overwrites = plan_writes(headers, target_rows, opera_sources, args.allow_overwrite)
@@ -424,7 +413,7 @@ def main():
     if updates:
         sheets.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
     append_rows(sheets, headers, appends)
-    print(json.dumps({"ranges": [{"partner": PARTNER, "start": opera_start.isoformat(), "end": end.isoformat()}, {"partner": GX_PARTNER, "start": gx_start.isoformat(), "end": end.isoformat()}], "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
+    print(json.dumps({"ranges": [{"partner": PARTNER, "start": start.isoformat(), "end": end.isoformat()}, {"partner": GX_PARTNER, "start": start.isoformat(), "end": end.isoformat()}], "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

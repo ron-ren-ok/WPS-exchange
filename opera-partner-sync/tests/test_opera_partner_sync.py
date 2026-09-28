@@ -1,9 +1,9 @@
 import importlib.util
 import unittest
 from email.message import EmailMessage
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 MODULE = Path(__file__).resolve().parents[1] / "src" / "opera_partner_sync.py"
 SPEC = importlib.util.spec_from_file_location("opera", MODULE)
@@ -58,8 +58,9 @@ Day Utm Content New Users Revenue
         day = date(2026, 9, 27)
         with patch.object(OPERA, "gx_messages", return_value=[{"From": OPERA.SENDER}]), \
              patch.object(OPERA, "attachments", return_value=[b"pdf"]), \
-             patch.object(OPERA, "parse_opera_gx_pdf", side_effect=lambda _pdf, content: OPERA.parse_opera_gx_text(gx, content)):
-            sources = {surface: OPERA.gx_source_rows(object(), surface, day, day) for surface in OPERA.GX_SURFACES}
+             patch.object(OPERA, "extract_pdf_text", return_value=gx) as extractor:
+            sources = OPERA.dashboard_source_rows(object(), day, day, gx=True, include_history=False)
+        extractor.assert_called_once_with(b"pdf")
         headers = ["日期", "合作方", "运营位", "新增", "血量"]
         existing = {(day, "Opera GX", "气泡"): {"row": 10, "values": [day, "Opera GX", "气泡", 100, 10]},
                     (day, "Opera GX", "换量弹窗"): {"row": 11, "values": [day, "Opera GX", "换量弹窗", 200, 20]}}
@@ -76,7 +77,7 @@ Day Utm Content New Users Revenue
         day = date(2026, 9, 27)
         with patch.object(OPERA, "gx_messages", return_value=[{"From": OPERA.SENDER}]), \
              patch.object(OPERA, "attachments", return_value=[b"pdf"]), \
-             patch.object(OPERA, "parse_opera_gx_pdf", side_effect=lambda _pdf, content: OPERA.parse_opera_gx_text(gx, content)):
+             patch.object(OPERA, "extract_pdf_text", return_value=gx) as extractor:
             source = OPERA.gx_source_rows(object(), "recall", day, day)
         self.assertEqual(source, {})
         self.assertEqual(OPERA.gx_plan_writes(list(OPERA.HEADERS), {}, {"recall": source}, allow_overwrite=False), ([], [], []))
@@ -126,29 +127,12 @@ Day Utm Content New Users Revenue
             "血量": 2,
         }])
     def test_gx_source_skips_incompatible_attachment(self):
-
-        original_messages = OPERA.gx_messages
-        original_attachments = OPERA.attachments
-        original_parser = OPERA.parse_opera_gx_pdf
-        try:
-            OPERA.gx_messages = lambda _client: [{"From": OPERA.SENDER}, {"From": OPERA.SENDER}]
-            OPERA.attachments = lambda _message: [b"pdf"]
-            calls = iter([
-                ValueError("OperaGX Summary table headers were not found"),
-                {date(2026, 8, 27): {"new_users": 10, "blood_volume": 2}},
-            ])
-            def fake_parser(_raw_pdf, _utm_content):
-                result = next(calls)
-                if isinstance(result, Exception):
-                    raise result
-                return result
-            OPERA.parse_opera_gx_pdf = fake_parser
+        gx = "Summary table\nDay Utm Content New Users Revenue\n1 2026-08-27 toast 10 $2.00\n"
+        with patch.object(OPERA, "gx_messages", return_value=[{"From": OPERA.SENDER}]), \
+             patch.object(OPERA, "attachments", return_value=[b"other", b"pdf"]), \
+             patch.object(OPERA, "extract_pdf_text", side_effect=["not a dashboard", gx]):
             rows = OPERA.gx_source_rows(object(), "bubble", date(2026, 8, 27), date(2026, 8, 27))
-            self.assertEqual(rows[date(2026, 8, 27)], {"new_users": 10, "blood_volume": 2})
-        finally:
-            OPERA.gx_messages = original_messages
-            OPERA.attachments = original_attachments
-            OPERA.parse_opera_gx_pdf = original_parser
+        self.assertEqual(rows[date(2026, 8, 27)], {"new_users": 10, "blood_volume": 2})
 
     def test_rejects_duplicate_campaign_date(self):
         duplicate = PDF_TEXT.replace("Performance", "5 2026-07-12 wpstest 2 $1.00\nPerformance")
@@ -174,7 +158,7 @@ Day Utm Content New Users Revenue
         client = FakeImap()
         self.assertEqual(list(OPERA.imap_messages(client)), [])
         self.assertEqual(client.mailbox, ("[Gmail]/All Mail", True))
-        self.assertEqual(client.uid_args, ("search", None, "SUBJECT", f'"{OPERA.SUBJECT}"'))
+        self.assertEqual(client.uid_args, ("search", None, "FROM", OPERA.SENDER, "SUBJECT", f'"{OPERA.SUBJECT}"'))
         message = EmailMessage()
         message["From"] = OPERA.SENDER
         message.set_content("report")
@@ -215,6 +199,105 @@ Day Utm Content New Users Revenue
         self.assertEqual(len(updates), 1)
         self.assertIn("D99", updates[0]["range"])
         self.assertEqual(len(overwrites), 1)
+
+class PerformanceTests(unittest.TestCase):
+    def test_recent_mail_filter_and_newest_first(self):
+        client = MagicMock()
+        client.list.return_value = ("OK", [])
+        client.select.return_value = ("OK", [])
+        message = EmailMessage()
+        message["From"] = OPERA.SENDER
+        message.set_content("report")
+        def uid(*args):
+            if args[0] == "search":
+                return "OK", [b"101 102"]
+            return "OK", [(b"RFC822", message.as_bytes())]
+        client.uid.side_effect = uid
+        list(OPERA.imap_messages(client, since=date(2026, 9, 22)))
+        self.assertEqual(client.uid.call_args_list[0].args, ("search", None, "FROM", OPERA.SENDER, "SUBJECT", f'"{OPERA.SUBJECT}"', "SINCE", "22-Sep-2026"))
+        self.assertEqual([call.args[1] for call in client.uid.call_args_list[1:]], [b"102", b"101"])
+
+    def test_one_extraction_for_both_opera_positions_and_early_stop(self):
+        seen = []
+        def messages(*args, **kwargs):
+            for index in range(3):
+                seen.append(index)
+                yield {"From": OPERA.SENDER}
+        with patch.object(OPERA, "imap_messages", side_effect=messages), \
+             patch.object(OPERA, "attachments", return_value=[b"pdf"]), \
+             patch.object(OPERA, "extract_pdf_text", return_value=PDF_TEXT) as extractor:
+            sources = OPERA.dashboard_source_rows(object(), date(2026, 7, 11), date(2026, 7, 12))
+        self.assertEqual(seen, [0])
+        extractor.assert_called_once_with(b"pdf")
+        self.assertEqual(len(sources["bubble"]), 2)
+        self.assertEqual(len(sources["popup"]), 2)
+
+    def test_history_fills_gap_and_keeps_newest_values(self):
+        latest = PDF_TEXT.replace("4 2026-07-11 wpstest 13,228 $1,083.56", "")
+        older = PDF_TEXT.replace("11,203 $943.79", "1 $1.00")
+        with patch.object(OPERA, "imap_messages", return_value=[{"From": OPERA.SENDER}] * 2), \
+             patch.object(OPERA, "attachments", return_value=[b"pdf"]), \
+             patch.object(OPERA, "extract_pdf_text", side_effect=[latest, older]):
+            sources = OPERA.dashboard_source_rows(object(), date(2026, 7, 11), date(2026, 7, 12))
+        self.assertEqual(sources["bubble"][date(2026, 7, 12)]["new_users"], 11203)
+        self.assertEqual(sources["bubble"][date(2026, 7, 11)]["new_users"], 13228)
+
+    def test_gx_history_filters_dates_and_keeps_newest_values(self):
+        header = "Summary table\nDay Utm Content New Users Revenue\n"
+        latest = header + "1 2026-09-27 toast 100 $10.00\n2 2026-09-28 recall 999 $99.00\n"
+        older = header + "1 2026-09-27 toast 50 $5.00\n2 2026-09-26 recall 20 $2.00\n"
+        with patch.object(OPERA, "gx_messages", return_value=[{"From": OPERA.SENDER}] * 2) as messages, \
+             patch.object(OPERA, "attachments", return_value=[b"pdf"]), \
+             patch.object(OPERA, "extract_pdf_text", side_effect=[latest, older]) as extractor:
+            sources = OPERA.dashboard_source_rows(object(), date(2026, 9, 26), date(2026, 9, 27), gx=True, since=date(2026, 9, 26), include_history=True)
+        messages.assert_called_once_with(unittest.mock.ANY, since=date(2026, 9, 26), include_history=True)
+        self.assertEqual(extractor.call_count, 2)
+        self.assertEqual(sources["bubble"][date(2026, 9, 27)]["new_users"], 100)
+        self.assertEqual(sources["recall"], {date(2026, 9, 26): {"new_users": 20, "blood_volume": 2}})
+
+    def test_continued_summary_on_later_page_is_retained(self):
+        pdf = MagicMock()
+        first, second = MagicMock(), MagicMock()
+        first.extract_text.return_value = "Summary table\nDay Campaign New Users Revenue\n1 2026-07-12 wpstest 10 $2.00"
+        second.extract_text.return_value = "2 2026-07-12 wpstest2/opera.exe 20 $3.00"
+        pdf.pages = [first, second]
+        with patch.object(OPERA.pdfplumber, "open") as opened:
+            opened.return_value.__enter__.return_value = pdf
+            sources = OPERA.parse_dashboard_text(OPERA.extract_pdf_text(b"pdf"))
+        self.assertEqual(sources["popup"][date(2026, 7, 12)]["new_users"], 20)
+
+    def test_main_default_and_explicit_windows(self):
+        for argv, expected_start, expected_end, since, history in [
+            (["sync"], date(2026, 9, 25), date(2026, 9, 27), date(2026, 9, 22), False),
+            (["sync", "--start-date", "2026-08-01", "--end-date", "2026-08-10"], date(2026, 8, 1), date(2026, 8, 10), date(2026, 8, 1), True),
+            (["sync", "--end-date", "2026-08-10"], date(2026, 8, 8), date(2026, 8, 10), date(2026, 8, 8), True),
+        ]:
+            with self.subTest(argv=argv), \
+                 patch.object(OPERA.sys, "argv", argv), \
+                 patch.dict(OPERA.os.environ, {"GMAIL_IMAP_USERNAME": "test", "GMAIL_APP_PASSWORD": "test", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON": "{}"}), \
+                 patch.object(OPERA, "datetime") as clock, \
+                 patch.object(OPERA, "sheets_service"), \
+                 patch.object(OPERA, "get_sheet", return_value=(list(OPERA.HEADERS), {})), \
+                 patch.object(OPERA, "gmail_imap_client") as gmail, \
+                 patch.object(OPERA, "dashboard_source_rows", return_value={}) as loader, \
+                 patch.object(OPERA, "append_rows"):
+                clock.now.return_value = datetime(2026, 9, 28)
+                clock.strptime.side_effect = datetime.strptime
+                OPERA.main()
+            self.assertEqual(loader.call_args_list[0].args, (gmail.return_value, expected_start, expected_end))
+            self.assertEqual(loader.call_args_list[0].kwargs, {"since": since})
+            self.assertEqual(loader.call_args_list[1].kwargs, {"gx": True, "since": since, "include_history": history})
+
+    def test_invalid_range_stops_before_gmail_or_writes(self):
+        with patch.object(OPERA.sys, "argv", ["sync", "--start-date", "2026-09-28", "--end-date", "2026-09-27"]), \
+             patch.dict(OPERA.os.environ, {"GMAIL_IMAP_USERNAME": "test", "GMAIL_APP_PASSWORD": "test", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON": "{}"}), \
+             patch.object(OPERA, "sheets_service"), \
+             patch.object(OPERA, "get_sheet", return_value=(list(OPERA.HEADERS), {})), \
+             patch.object(OPERA, "gmail_imap_client") as gmail:
+            with self.assertRaisesRegex(RuntimeError, "start date is after end date"):
+                OPERA.main()
+            gmail.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
