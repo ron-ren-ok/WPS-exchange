@@ -49,26 +49,3 @@ jobs:
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
           GMAIL_IMAP_USERNAME: ${{ secrets.GMAIL_IMAP_USERNAME }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-      - name: Notify production webhook on failure or skipped data
-        if: ${{ always() && !cancelled() }}
-        shell: pwsh
-        env:
-          WPS_WEBHOOK_URL: ${{ secrets.WPS_WEBHOOK_URL }}
-          WPS_WEBHOOK_KEY: ${{ secrets.WPS_WEBHOOK_KEY }}
-          WPS_WEBHOOK_SECRET: ${{ secrets.WPS_WEBHOOK_SECRET }}
-          SYNC_FAILED: ${{ job.status == 'failure' }}
-        run: |
-          $status = if (Test-Path -LiteralPath 'sync-status.json') { Get-Content -LiteralPath 'sync-status.json' -Raw | ConvertFrom-Json } else { $null }
-          if ($env:SYNC_FAILED -ne 'true' -and (!$status -or @($status.warnings).Count -eq 0)) { exit 0 }
-          $title = if ($env:SYNC_FAILED -eq 'true') { 'Avast partner sync运行出错，请检查。' } else { 'Avast partner sync部分日期已跳过，请检查。' }
-          $lines = @($title)
-          $operations = @{ popup = '换量弹窗'; bubble = '气泡'; uninstall_h5 = '卸载后引导H5'; document_radar = '文档雷达' }
-          $reasons = @{ partial_metrics = '新增或血量缺失，整日跳过'; ambiguous_columns = '无法确认日期列对应关系'; invalid_metric = '指标格式异常'; missing_dates = '日期未覆盖'; missing_report = '未收到报告'; no_usable_data = '报告没有可用完整指标'; parse_failure = 'PDF解析失败'; fetch_failure = '邮件抓取失败' }
-          if ($status) {
-            $lines += "范围：$($status.start) 至 $($status.end)；已验证 $($status.verified_records) 条完整记录。"
-            foreach ($warning in $status.warnings) {
-              $lines += "$($operations[$warning.surface])：$($reasons[$warning.code]) $(@($warning.dates) -join ', ')"
-            }
-          }
-          $lines += "运行详情：https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          ../daily-progress/scripts/send-wps-webhook.ps1 -Markdown ($lines -join "`n`n") -WebhookUrl $env:WPS_WEBHOOK_URL
