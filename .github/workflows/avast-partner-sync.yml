@@ -56,7 +56,7 @@ jobs:
           WPS_WEBHOOK_URL: ${{ secrets.WPS_WEBHOOK_URL }}
           WPS_WEBHOOK_KEY: ${{ secrets.WPS_WEBHOOK_KEY }}
           WPS_WEBHOOK_SECRET: ${{ secrets.WPS_WEBHOOK_SECRET }}
-          SYNC_FAILED: ${{ failure() }}
+          SYNC_FAILED: ${{ job.status == 'failure' }}
         run: |
           $status = if (Test-Path -LiteralPath 'sync-status.json') { Get-Content -LiteralPath 'sync-status.json' -Raw | ConvertFrom-Json } else { $null }
           if ($env:SYNC_FAILED -ne 'true' -and (!$status -or @($status.warnings).Count -eq 0)) { exit 0 }
