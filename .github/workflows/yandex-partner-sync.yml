@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: "Start date (YYYY-MM-DD); defaults to yesterday"
+        description: "Start date (YYYY-MM-DD); defaults to end date minus 6 days"
         required: false
         type: string
       end_date:
@@ -23,9 +23,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: yandex-partner-sync
+  cancel-in-progress: false
+
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: yandex-partner-sync
@@ -35,11 +40,21 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: >-
-          python src/yandex_partner_sync.py
-          ${{ inputs.start_date && format('--start-date {0}', inputs.start_date) || '' }}
-          ${{ inputs.end_date && format('--end-date {0}', inputs.end_date) || '' }}
-          --allow-overwrite
+      - run: python -m unittest discover -s tests -v
+      - shell: bash
+        run: |
+          args=()
+          if [[ -n "$START_DATE" ]]; then args+=(--start-date "$START_DATE"); fi
+          if [[ -n "$END_DATE" ]]; then args+=(--end-date "$END_DATE"); fi
+          if [[ "$ALLOW_OVERWRITE" == "true" ]]; then
+            args+=(--allow-overwrite)
+          else
+            args+=(--no-allow-overwrite)
+          fi
+          python src/yandex_partner_sync.py "${args[@]}"
         env:
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+          ALLOW_OVERWRITE: ${{ github.event_name != 'workflow_dispatch' || inputs.allow_overwrite }}
           YANDEX_DISTRIBUTION_TOKEN: ${{ secrets.YANDEX_DISTRIBUTION_TOKEN }}
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}

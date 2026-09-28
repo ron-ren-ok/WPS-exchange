@@ -5,8 +5,9 @@ import json
 import os
 import re
 import sys
+import time
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -23,6 +24,51 @@ FIELDS = (
     "default_field_dt", "default_field_country", "default_field_pack_id",
     "msetupstatistics_setups", "default_fixed_partner_reward_metric",
 )
+MAX_ATTEMPTS = 4
+
+
+def http_status(exc):
+    return getattr(exc, "code", None) or getattr(getattr(exc, "resp", None), "status", None)
+
+
+def retryable(exc):
+    status = http_status(exc)
+    if status is not None:
+        return status == 429 or 500 <= status < 600
+    if isinstance(exc, (URLError, TimeoutError, ConnectionError, OSError)):
+        return True
+    try:
+        from httplib2 import ServerNotFoundError
+    except ImportError:
+        return False
+    return isinstance(exc, ServerNotFoundError)
+
+
+def retry_delay(exc, attempt):
+    headers = getattr(exc, "headers", None) or getattr(exc, "resp", {})
+    try:
+        return min(30, max(2 ** attempt, float(headers.get("retry-after", 0))))
+    except (TypeError, ValueError):
+        return 2 ** attempt
+
+
+def with_retry(action, label):
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            return action()
+        except Exception as exc:
+            if not retryable(exc) or attempt == MAX_ATTEMPTS - 1:
+                raise
+            print(f"{label}: transient failure; retry {attempt + 1}/{MAX_ATTEMPTS - 1}")
+            time.sleep(retry_delay(exc, attempt))
+
+
+def requested_dates(start_date=None, end_date=None):
+    end = parse_day(end_date) if end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
+    start = parse_day(start_date) if start_date else end - timedelta(days=6)
+    if start > end:
+        raise RuntimeError("start date is after end date")
+    return start, end
 
 
 def load_json(path):
@@ -122,9 +168,11 @@ def fetch_daily(profile, start, end, token):
         raise RuntimeError("Yandex token is empty")
     body = json.dumps({"blocks": build_blocks(profile, start, end)}, ensure_ascii=False).encode()
     request = Request(ENDPOINT, data=body, method="POST", headers={"Authorization": f"OAuth {token}", "Accept": "application/json", "Content-Type": "application/json"})
-    try:
+    def read_response():
         with urlopen(request, timeout=60) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            return response.read().decode("utf-8")
+    try:
+        payload = json.loads(with_retry(read_response, "Yandex API"))
     except HTTPError as exc:
         detail = exc.read(1000).decode("utf-8", "replace").replace("\r", " ").replace("\n", " ").strip()
         raise RuntimeError(f"Yandex API HTTP {exc.code}: {detail[:1000]}") from None
@@ -144,27 +192,35 @@ def fetch_daily(profile, start, end, token):
         if int(row["default_field_pack_id"]) not in set(profile["pack_ids"]):
             raise RuntimeError("Yandex response has an unexpected pack ID")
         day = parse_day(row["default_field_dt"])
+        if not start <= day <= end:
+            raise RuntimeError(f"Yandex response date outside requested range: {day}")
         totals[day][0] += scalar(row["msetupstatistics_setups"])
         totals[day][1] += scalar(row["default_fixed_partner_reward_metric"])
+    reported_days = set(totals)
     source_start = validate_source_coverage(totals, start, end)
     if source_start > start:
         print(f"Yandex source has no historical data before {source_start}; skipping that leading interval.")
-    return {day: {"new_users": values[0], "blood_volume": values[1]} for day, values in totals.items()}
+    return {day: {"new_users": values[0], "blood_volume": values[1], "inferred_zero": day not in reported_days} for day, values in totals.items()}
 
 
 def validate_source_coverage(totals, start, end):
-    """Complete zero-activity days while keeping unavailable leading history explicit."""
+    """Infer only internal zero days; leave leading and trailing missing data pending."""
     if not totals:
         raise RuntimeError("Yandex source returned no data")
     source_start = min(totals)
-    expected = {source_start + timedelta(days=index) for index in range((end - source_start).days + 1)}
+    source_end = max(totals)
+    if source_start < start or source_end > end:
+        raise RuntimeError("Yandex source dates outside requested range")
+    expected = {source_start + timedelta(days=index) for index in range((source_end - source_start).days + 1)}
     missing = sorted(expected - set(totals))
     # The Yandex daily table omits dates on which every requested metric is 0.
     # Preserve those calendar dates as explicit zero values for Sheets.
     if missing:
-        print(f"Yandex API omitted {len(missing)} zero-activity day(s); writing 0 / 0 for them.")
+        print(f"Yandex API omitted internal dates: {','.join(day.isoformat() for day in missing)}; inferring 0 / 0 subject to existing-value protection.")
         for day in missing:
             totals[day] = [0, 0]
+    if source_end < end:
+        print(f"Yandex source pending after {source_end}; not filling trailing missing dates with zero.")
     return source_start
 
 
@@ -179,12 +235,12 @@ def column_name(index):
 
 
 def sheet_rows(service):
-    values = service.spreadsheets().values().get(
+    values = with_retry(lambda: service.spreadsheets().values().get(
         spreadsheetId=SHEET_ID,
-        range=f"'{SHEET_NAME}'!A1:E10000",
+        range=f"'{SHEET_NAME}'!A:E",
         valueRenderOption="UNFORMATTED_VALUE",
         dateTimeRenderOption="SERIAL_NUMBER",
-    ).execute().get("values", [])
+    ).execute(), "Sheets read").get("values", [])
     if not values or len(values[0]) != len(set(values[0])) or any(header not in values[0] for header in HEADERS):
         raise RuntimeError("long-format target headers are missing or duplicated")
     headers = values[0]
@@ -216,18 +272,21 @@ def values_match(current, wanted):
         return str(current).replace(",", "") == str(wanted)
 
 
-def first_missing_day(headers, rows, profiles, cutoff):
-    candidates = []
-    for profile in profiles:
-        operation = profile["surface"]
-        records = {day: row for (day, partner, surface), row in rows.items() if partner == PARTNER and surface == operation and day <= cutoff}
-        if not records:
+def has_nonzero_metrics(headers, row):
+    for header in ("新增", "血量"):
+        value = existing_value(row, headers.index(header))
+        if value not in ("", None) and not values_match(value, 0):
+            return True
+    return False
+
+
+def protect_missing_source(headers, rows, source, profile, start, end):
+    reported = {day for day, metrics in source.items() if not metrics.get("inferred_zero", False)}
+    for (day, partner, surface), row in rows.items():
+        if partner != PARTNER or surface != profile["surface"] or not start <= day <= end or day in reported:
             continue
-        first_day = min(records)
-        expected = {first_day + timedelta(days=index) for index in range((cutoff - first_day).days + 1)}
-        incomplete = {day for day, row in records.items() if any(existing_value(row, headers.index(header)) in ("", None) for header in ("新增", "血量"))}
-        candidates.append(min((expected - set(records)) | incomplete) if (expected - set(records)) | incomplete else cutoff)
-    return min(candidates) if candidates else cutoff
+        if has_nonzero_metrics(headers, row):
+            raise RuntimeError(f"Yandex source missing {day} {surface}, but sheet has nonzero/invalid metrics; refusing all writes")
 
 
 def planned_writes(headers, rows, profile_rows, profile, allow_overwrite):
@@ -236,6 +295,8 @@ def planned_writes(headers, rows, profile_rows, profile, allow_overwrite):
     operation = profile["surface"]
     for day, metrics in sorted(profile_rows.items()):
         row = rows.get((day, PARTNER, operation))
+        if row is not None and metrics.get("inferred_zero") and has_nonzero_metrics(headers, row):
+            raise RuntimeError(f"refusing inferred zero over nonzero metrics: {day} {operation}")
         if row is None:
             appends.append({"日期": day, "合作方": PARTNER, "运营位": operation, "新增": metrics["new_users"], "血量": metrics["blood_volume"]})
             continue
@@ -258,6 +319,39 @@ def planned_writes(headers, rows, profile_rows, profile, allow_overwrite):
 def append_rows(service, headers, records):
     if not records:
         return
+    pending = list(records)
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            append_once(service, headers, pending)
+            return
+        except Exception as exc:
+            if not retryable(exc):
+                raise
+            # A timeout/5xx may have committed. Never blindly resend an append.
+            current_headers, current_rows = sheet_rows(service)
+            if current_headers != headers:
+                raise RuntimeError("target headers changed during append recovery") from exc
+            remaining = []
+            for record in pending:
+                key = (record["日期"], record["合作方"], record["运营位"])
+                row = current_rows.get(key)
+                if row is None:
+                    remaining.append(record)
+                elif any(not values_match(existing_value(row, headers.index(header)), record[header]) for header in ("新增", "血量")):
+                    raise RuntimeError(f"append recovery found conflicting record: {key}") from exc
+            if not remaining:
+                print("Append recovered: all records confirmed by readback.")
+                return
+            if http_status(exc) != 429:
+                raise RuntimeError("append outcome uncertain and readback incomplete; refusing resend to prevent duplicates; rerun after checking the sheet") from exc
+            if attempt == MAX_ATTEMPTS - 1:
+                raise
+            pending = remaining
+            print(f"Sheets append: rate limited; retry {attempt + 1}/{MAX_ATTEMPTS - 1} after readback")
+            time.sleep(retry_delay(exc, attempt))
+
+
+def append_once(service, headers, records):
     positions = {header: headers.index(header) for header in HEADERS}
     values = []
     for record in records:
@@ -277,6 +371,21 @@ def append_rows(service, headers, records):
     ).execute()
 
 
+def verify_writes(service, headers, profiles, source_by_profile):
+    current_headers, rows = sheet_rows(service)
+    if current_headers != headers:
+        raise RuntimeError("target headers changed during sync")
+    verified = 0
+    for profile in profiles:
+        for day, metrics in source_by_profile[profile["profile_id"]].items():
+            key = (day, PARTNER, profile["surface"])
+            row = rows.get(key)
+            if row is None or any(not values_match(existing_value(row, headers.index(header)), metrics[metric]) for header, metric in (("新增", "new_users"), ("血量", "blood_volume"))):
+                raise RuntimeError(f"write readback mismatch: {key}")
+            verified += 1
+    return verified
+
+
 def google_service(service_json):
     from google.oauth2.service_account import Credentials
     from googleapiclient.discovery import build
@@ -288,30 +397,29 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
-    parser.add_argument("--allow-overwrite", action="store_true")
+    parser.add_argument("--allow-overwrite", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
     token = os.environ.get("YANDEX_DISTRIBUTION_TOKEN")
     service_json = os.environ.get("GOOGLE_SHEET_SERVICE_ACCOUNT_JSON")
     if not token or not service_json:
         raise RuntimeError("missing required GitHub Actions secret")
-    end = parse_day(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
+    start, end = requested_dates(args.start_date, args.end_date)
     service = google_service(service_json)
     headers, rows = sheet_rows(service)
     profiles = [load_profile(name) for name in ("popup", "bubble")]
-    start = parse_day(args.start_date) if args.start_date else first_missing_day(headers, rows, profiles, end)
-    if start > end:
-        raise RuntimeError("start date is after end date")
     source_by_profile = {profile["profile_id"]: fetch_daily(profile, start, end, token) for profile in profiles}
     updates, appends, overwrites = [], [], []
     for profile in profiles:
+        protect_missing_source(headers, rows, source_by_profile[profile["profile_id"]], profile, start, end)
         next_updates, next_appends, next_overwrites = planned_writes(headers, rows, source_by_profile[profile["profile_id"]], profile, args.allow_overwrite)
         updates.extend(next_updates)
         appends.extend(next_appends)
         overwrites.extend(next_overwrites)
     if updates:
-        service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
+        with_retry(lambda: service.spreadsheets().values().batchUpdate(spreadsheetId=SHEET_ID, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute(), "Sheets update")
     append_rows(service, headers, appends)
-    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "updated_cells": len(updates), "appended_rows": len(appends), "overwrites": overwrites}, ensure_ascii=False))
+    verified = verify_writes(service, headers, profiles, source_by_profile)
+    print(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "allow_overwrite": args.allow_overwrite, "updated_cells": len(updates), "appended_rows": len(appends), "verified_rows": verified, "overwrites": overwrites}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
