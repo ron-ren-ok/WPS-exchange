@@ -219,16 +219,15 @@ def partner_heading(name: str, series: dict[date, float], latest: date, target: 
     next_day = completed + (daily_average or 0) if latest.day < days_in_month else None
     status = ("✅" if completed >= target else "⏳") if target > 0 else ""
 
-    def summary(label: str, amount: float | None, marker: str = "") -> str:
-        value = f"{amount:.2f}" if amount is not None else "—"
-        completion = f"{amount / target * 100:.0f}%" if amount is not None and target > 0 else "—"
-        prefix = f"{marker} " if marker else ""
-        return f"{label} {value}｜{prefix}{completion}"
+    def completion(amount: float | None) -> str:
+        return f"{amount / target * 100:.0f}%" if amount is not None and target > 0 else "—"
 
-    lines = [f"{name} · {latest.month}/{latest.day}",
-             summary("累计", completed, status),
-             summary("次日", next_day),
-             summary("月末", projected)]
+    def value(amount: float | None) -> str:
+        return f"{amount:.2f}" if amount is not None else "—"
+
+    marker = f"{status} " if status else ""
+    lines = [f"{name} · {latest.month}/{latest.day}｜{marker}{completion(completed)} → {completion(next_day)} → {completion(projected)}",
+             f"累计 {value(completed)} → 次日 {value(next_day)} → 月末 {value(projected)}"]
     return "  \n".join(f"> <font color='#000000'>**{line}** </font>" for line in lines)
 
 
