@@ -21,6 +21,7 @@ TARGET_SHEET = "目标完成度"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=63683153"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 UNIT_DIVISOR = 10_000
+SPARKLINE_CHARS = "▁▂▃▄▅▆▇█"
 TARGET_BLOCKS = {
     "合作方预算目标": ("revenue", "合作方预算实际"),
     "合作方新增目标": ("new", "合作方新增实际"),
@@ -195,18 +196,26 @@ def percent_change(current: float | None, previous: float | None) -> str:
     return f"{arrow} **{abs(change):.1f}%** "
 
 
-def metric_line(label: str, series: dict[date, float], latest: date) -> str:
+def weekly_averages(series: dict[date, float], latest: date) -> list[float | None]:
+    """Six inclusive seven-day means, oldest first, anchored to the data cutoff."""
+    return [average(series, latest - timedelta(days=7 * offset), 7) for offset in range(5, -1, -1)]
+
+
+def weekly_sparkline(series: dict[date, float], latest: date) -> str:
+    values = weekly_averages(series, latest)
+    ceiling = max((value for value in values if value is not None), default=0.0)
+    # Keep real zero at the lowest bar; missing weeks occupy a visible dot.
+    return "".join("·" if value is None else SPARKLINE_CHARS[
+        max(0, min(7, round(value / ceiling * 7))) if ceiling > 0 else 0
+    ] for value in values)
+
+
+def metric_line(label: str, series: dict[date, float], latest: date, show_trend: bool = False) -> str:
     current = series.get(latest)
     previous_day = series.get(latest - timedelta(days=7))
-    seven = average(series, latest, 7)
-    seven_previous = average(series, latest - timedelta(days=7), 7)
-    seven_before_previous = average(series, latest - timedelta(days=14), 7)
     value = f"{current:.2f}" if current is not None else "—"
-    return (
-        f"{label}：**{value}** ｜{percent_change(current, previous_day)}｜"
-        f"{percent_change(seven, seven_previous)}｜"
-        f"{percent_change(seven_previous, seven_before_previous)}"
-    )
+    trend = weekly_sparkline(series, latest) if show_trend else ""
+    return f"{label}：**{value}** ｜{percent_change(current, previous_day)}{trend}"
 
 
 def partner_heading(name: str, series: dict[date, float], latest: date, target: float) -> str:
@@ -225,10 +234,12 @@ def partner_heading(name: str, series: dict[date, float], latest: date, target: 
     def value(amount: float | None) -> str:
         return f"{amount:.2f}" if amount is not None else "—"
 
-    marker = f"{status} " if status else ""
-    lines = [f"{name} · {latest.month}/{latest.day}｜{marker}{completion(completed)} → {completion(next_day)} → {completion(projected)}",
-             f"累计 {value(completed)} → 次日 {value(next_day)} → 月末 {value(projected)}"]
-    return "  \n".join(f"> <font color='#000000'>**{line}** </font>" for line in lines)
+    ratios = f"{status}{completion(completed)}→{completion(next_day)}→{completion(projected)}"
+    amounts = f"{value(completed)}→{value(next_day)}→{value(projected)}"
+    return (
+        f"> <font color='#000000'>**{name}** · {latest.month}/{latest.day}｜**{ratios}** </font>  \n"
+        f"> <font color='#000000'>累计 **{amounts}** </font>"
+    )
 
 
 def report_texts(source_rows: list[list[dict]], target_rows: list[list[dict]]) -> dict[str, str]:
@@ -244,18 +255,20 @@ def report_texts(source_rows: list[list[dict]], target_rows: list[list[dict]]) -
         if latest is None:
             continue
         lines = [partner_heading(name, series[name][metric], latest, partner["target"])]
-        lines.append(metric_line("新增", series[name]["new"], latest))
+        lines.append(metric_line("新增", series[name]["new"], latest, show_trend=metric == "new"))
         if metric == "revenue":
-            lines.append(metric_line("血量", series[name]["revenue"], latest))
+            lines.append(metric_line("血量", series[name]["revenue"], latest, show_trend=True))
         # WPS cards require paragraph breaks, including between the two metric lines.
         blocks[metric].append("\n\n".join(lines))
     if not any(blocks.values()):
         raise RuntimeError("No configured partner metrics were available for the latest reporting month.")
     reports = {}
     for metric, partner_blocks in blocks.items():
-        legend = "绝对值｜当日环比｜本期7日均环比｜上期7日均环比"
         # A colored text marker gives the requested unfilled left-border appearance.
-        footer = f"<font color='#d4dae2'>┃</font> <font color='#808080'>{legend}</font>"
+        footer = "\n\n".join(
+            f"<font color='#d4dae2'>┃</font> <font color='#808080'>{text}</font>"
+            for text in ("顺序：累计→次日→月末", "柱图：近6周日均（左旧右新；·缺失）")
+        )
         content = "\n\n".join(partner_blocks) if partner_blocks else "暂无本月已回传数据"
         # The sender converts this Markdown separator into a native card hr element.
         reports[metric] = f"{content}\n\n---\n\n{footer}\n\n[查看明细]({SHEET_URL})"
