@@ -81,10 +81,50 @@ class PartnerProgressTests(unittest.TestCase):
         series = {date(2026, 9, 1) + timedelta(days=i): 1.0 for i in range(27)}
         series[date(2026, 8, 31)] = 999.0
         self.assertEqual(PROGRESS.partner_heading("Opera", series, latest, 20.0),
-                         "> <font color='#000000'>**Opera · 9/27｜✅ 135%** </font>  \n"
-                         "> <font color='#000000'>**累计 27.00 → 预计 30.00** </font>")
-        self.assertIn("完成度 54%", PROGRESS.partner_heading("Opera", series, latest, 50.0))
-        self.assertIn("完成度 —", PROGRESS.partner_heading("Opera", series, latest, 0.0))
+                         "> <font color='#000000'>**Opera · 9/27** </font>  \n"
+                         "> <font color='#000000'>**累计 27.00｜✅ 135%** </font>  \n"
+                         "> <font color='#000000'>**次日 28.00｜140%** </font>  \n"
+                         "> <font color='#000000'>**月末 30.00｜150%** </font>")
+        self.assertIn("累计 27.00｜⏳ 54%", PROGRESS.partner_heading("Opera", series, latest, 50.0))
+        self.assertIn("累计 27.00｜—", PROGRESS.partner_heading("Opera", series, latest, 0.0))
+
+    def test_next_day_is_cumulative_and_uses_same_14_day_average_as_month_end(self):
+        latest = date(2026, 9, 27)
+        series = {date(2026, 9, 1) + timedelta(days=i): 1.0 for i in range(27)}
+        series[date(2026, 9, 27)] = 15.0
+        # September cumulative=41; trailing 14-day mean=2; next-day=43; month-end=47.
+        heading = PROGRESS.partner_heading("360", series, latest, 50.0)
+        self.assertIn("累计 41.00｜⏳ 82%", heading)
+        self.assertIn("次日 43.00｜86%", heading)
+        self.assertIn("月末 47.00｜94%", heading)
+        self.assertEqual(heading.count("⏳"), 1)
+        self.assertNotIn("✅", heading)
+
+    def test_exact_target_is_achieved_and_predictions_have_no_achievement_icons(self):
+        latest = date(2026, 9, 27)
+        heading = PROGRESS.partner_heading("CAD", {latest: 1.0}, latest, 1.0)
+        self.assertIn("累计 1.00｜✅ 100%", heading)
+        self.assertIn("次日 2.00｜200%", heading)
+        self.assertIn("月末 4.00｜400%", heading)
+        self.assertEqual(heading.count("✅"), 1)
+
+    def test_month_end_next_day_does_not_use_previous_month_target(self):
+        latest = date(2026, 2, 28)
+        heading = PROGRESS.partner_heading("Opera", {latest: 2.0}, latest, 4.0)
+        self.assertIn("累计 2.00｜⏳ 50%", heading)
+        self.assertIn("次日 —｜—", heading)
+        self.assertIn("月末 2.00｜50%", heading)
+
+    def test_zero_daily_rate_keeps_zero_forecasts_and_zero_target_has_no_percentages(self):
+        latest = date(2026, 9, 27)
+        heading = PROGRESS.partner_heading("CAD", {latest: 0.0}, latest, 1.0)
+        self.assertIn("累计 0.00｜⏳ 0%", heading)
+        self.assertIn("次日 0.00｜0%", heading)
+        self.assertIn("月末 0.00｜0%", heading)
+        invalid_target = PROGRESS.partner_heading("CAD", {latest: 1.0}, latest, 0.0)
+        self.assertNotIn("%", invalid_target)
+        self.assertNotIn("✅", invalid_target)
+        self.assertNotIn("⏳", invalid_target)
 
     def test_reports_split_partners_keep_latest_dates_and_real_paragraph_breaks(self):
         def source_row(day, name, new_value, revenue_value=None):
@@ -114,8 +154,8 @@ class PartnerProgressTests(unittest.TestCase):
         self.assertNotIn("28日", revenue)
         self.assertNotIn("近12周", revenue)
         self.assertNotIn("\\n", revenue)
-        self.assertEqual(revenue.count("> <font color='#000000'>**"), 2)
-        self.assertEqual(new.count("> <font color='#000000'>**"), 4)
+        self.assertEqual(revenue.count("> <font color='#000000'>**"), 4)
+        self.assertEqual(new.count("> <font color='#000000'>**"), 8)
         for report in reports.values():
             body, footer = report.split("\n\n---\n\n")
             self.assertNotIn("绝对值｜", body)
@@ -134,7 +174,7 @@ class PartnerProgressTests(unittest.TestCase):
         latest = date(2026, 9, 27)
         series = {latest: 2.0, latest - timedelta(days=7): 1.0}
         heading = PROGRESS.partner_heading("Opera GX", series, latest, 1.0)
-        self.assertEqual(len(heading.splitlines()), 2)
+        self.assertEqual(len(heading.splitlines()), 4)
         self.assertIn("</font>  \n> ", heading)
         for text in (heading, PROGRESS.metric_line("新增", series, latest),
                      PROGRESS.metric_line("血量", {}, latest)):

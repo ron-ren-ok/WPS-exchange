@@ -215,12 +215,21 @@ def partner_heading(name: str, series: dict[date, float], latest: date, target: 
     daily_average = average(series, latest, 14)
     days_in_month = calendar.monthrange(latest.year, latest.month)[1]
     projected = completed + (daily_average or 0) * (days_in_month - latest.day)
-    completion = f"{completed / target * 100:.0f}%" if target > 0 else "—"
-    status = "✅" if target > 0 and completed >= target else "完成度"
-    return (
-        f"> <font color='#000000'>**{name} · {latest.month}/{latest.day}｜{status} {completion}** </font>  \n"
-        f"> <font color='#000000'>**累计 {completed:.2f} → 预计 {projected:.2f}** </font>"
-    )
+    # A next-month amount cannot be compared against this month's target.
+    next_day = completed + (daily_average or 0) if latest.day < days_in_month else None
+    status = ("✅" if completed >= target else "⏳") if target > 0 else ""
+
+    def summary(label: str, amount: float | None, marker: str = "") -> str:
+        value = f"{amount:.2f}" if amount is not None else "—"
+        completion = f"{amount / target * 100:.0f}%" if amount is not None and target > 0 else "—"
+        prefix = f"{marker} " if marker else ""
+        return f"{label} {value}｜{prefix}{completion}"
+
+    lines = [f"{name} · {latest.month}/{latest.day}",
+             summary("累计", completed, status),
+             summary("次日", next_day),
+             summary("月末", projected)]
+    return "  \n".join(f"> <font color='#000000'>**{line}** </font>" for line in lines)
 
 
 def report_texts(source_rows: list[list[dict]], target_rows: list[list[dict]]) -> dict[str, str]:
