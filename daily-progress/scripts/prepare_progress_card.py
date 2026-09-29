@@ -116,12 +116,13 @@ def card_elements(records: list[dict], targets: dict[str, float], cutoff: date) 
     def text_element(text: str) -> dict:
         return {"tag": "text", "content": {"type": "markdown", "text": text}}
 
+    footer_quote = "\n\n".join("> " + paragraph for paragraph in "\n\n".join([status, legend]).split("\n\n"))
     return [
         text_element(metric_block("血量", "万美元", revenue, targets["血量"])),
         {"tag": "hr", "style": "solid"},
         text_element(metric_block("360 新增", "万", users, targets["360新增"])),
         {"tag": "hr", "style": "solid"},
-        {"tag": "note", "elements": [text_element("\n\n".join([status, legend]))]},
+        text_element(footer_quote),
         text_element(f"[查看合作方新增血量]({daily.SHEET_URL})"),
     ]
 
@@ -136,8 +137,6 @@ def elements_content(elements: list[dict]) -> str:
     for element in elements:
         if element["tag"] == "text":
             paragraphs.append(element["content"]["text"])
-        elif element["tag"] == "note":
-            paragraphs.append(elements_content(element["elements"]))
     return "\n\n".join(paragraphs)
 
 

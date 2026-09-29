@@ -86,7 +86,7 @@ class ProgressCardTests(unittest.TestCase):
             {"date": date(2026, 9, 3), "partner": "360", "operation": "气泡", "新增": 990000, "血量": None},
         ]
         text = CARD.card_content(records, {"血量": 20, "360新增": 60}, date(2026, 9, 2))
-        plain = re.sub(r"<[^>]*>", "", text)
+        plain = re.sub(r"(?m)^> ", "", re.sub(r"<[^>]*>", "", text))
         self.assertIn("⚠ 数据不全 · 1 个合作方\n\n360", plain)
         for gray_text in ["⚠ 数据不全 · 1 个合作方", "360", "已回传", "未回传", "后续预测", "预计缺口", "│ 目标位置"]:
             self.assertIn(f"<font color='#8c8c8c'>{gray_text}</font>", text)
@@ -96,16 +96,18 @@ class ProgressCardTests(unittest.TestCase):
         self.assertEqual(text.count("目标位置"), 1)
         self.assertIn("预计缺口　│ 目标位置", plain)
         elements = CARD.card_elements(records, {"血量": 20, "360新增": 60}, date(2026, 9, 2))
-        self.assertEqual([element["tag"] for element in elements], ["text", "hr", "text", "hr", "note", "text"])
+        self.assertEqual([element["tag"] for element in elements], ["text", "hr", "text", "hr", "text", "text"])
         self.assertEqual(elements[1], {"tag": "hr", "style": "solid"})
         self.assertEqual(elements[3], {"tag": "hr", "style": "solid"})
         self.assertTrue(elements[0]["content"]["text"].startswith("**血量"))
         self.assertTrue(elements[2]["content"]["text"].startswith("**360 新增"))
-        note_text = elements[4]["elements"][0]
-        self.assertEqual(note_text["tag"], "text")
-        self.assertIn("⚠ 数据不全", note_text["content"]["text"])
-        self.assertIn("目标位置", note_text["content"]["text"])
-        self.assertIn("\n\n", note_text["content"]["text"])
+        footer_text = elements[4]["content"]["text"]
+        self.assertIn("⚠ 数据不全", footer_text)
+        self.assertIn("目标位置", footer_text)
+        self.assertEqual(len(footer_text.split("\n\n")), 3)
+        self.assertTrue(all(paragraph.startswith("> ") for paragraph in footer_text.split("\n\n")))
+        for index in [0, 2, 5]:
+            self.assertFalse(elements[index]["content"]["text"].startswith("> "))
         self.assertEqual(CARD.elements_content(elements), text)
         self.assertNotIn("text_size", str(elements))
         for index in [0, 2, 5]:
@@ -123,7 +125,7 @@ class ProgressCardTests(unittest.TestCase):
         records = [{"date": date(2026, 9, 2), "partner": "Avast", "operation": "气泡", "新增": 100, "血量": 10000}]
         text = CARD.card_content(records, {"血量": 10, "360新增": 60}, date(2026, 9, 2))
         self.assertIn("当月尚未回传，暂不预测", text)
-        self.assertIn("⚠ 数据不全 · 1 个合作方\n\n360", re.sub(r"<[^>]*>", "", text))
+        self.assertIn("⚠ 数据不全 · 1 个合作方\n\n> 360", re.sub(r"<[^>]*>", "", text))
 
     def test_no_month_data_or_invalid_target_fails(self):
         with self.assertRaises(ValueError):
