@@ -265,10 +265,7 @@ def report_texts(source_rows: list[list[dict]], target_rows: list[list[dict]]) -
     reports = {}
     for metric, partner_blocks in blocks.items():
         # A colored text marker gives the requested unfilled left-border appearance.
-        footer = "\n\n".join(
-            f"<font color='#d4dae2'>┃</font> <font color='#808080'>{text}</font>"
-            for text in ("顺序：累计→次日→月末", "柱图：近6周日均（左旧右新；·缺失）")
-        )
+        footer = "<font color='#d4dae2'>┃</font> <font color='#808080'>顺序：累计→次日→月末</font>"
         content = "\n\n".join(partner_blocks) if partner_blocks else "暂无本月已回传数据"
         # The sender converts this Markdown separator into a native card hr element.
         reports[metric] = f"{content}\n\n---\n\n{footer}\n\n[查看明细]({SHEET_URL})"
