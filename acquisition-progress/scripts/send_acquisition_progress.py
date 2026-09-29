@@ -241,7 +241,7 @@ def missing_actual_block(channel: str, new_target: float | None, mau_target: flo
         return f"目标 {target:.1f}" if target is not None else "目标待同步"
 
     return (
-        f"{channel} MAD ⏳暂未回传（{target_text(mau_target)}）\n\n"
+        f"> {channel} MAD ⏳暂未回传（{target_text(mau_target)}）\n\n"
         f"新增：暂未回传（{target_text(new_target)}）\n\n"
         f"昨增：暂未回传"
     )
@@ -279,11 +279,11 @@ def report_text(
         month_actual = sum(value for day, value in daily_new.items() if month_start <= day <= latest)
         sparkline, _ = weekly_sparkline(daily_new, latest)
         blocks.append(
-            f"{metric_line(f'{channel} MAD ⏳', daily_mau[latest], mau_target)}\n\n"
+            f"> {metric_line(f'{channel} MAD ⏳', daily_mau[latest], mau_target)}\n\n"
             f"{metric_line('新增：', month_actual, new_target)}\n\n"
             f"昨增：{daily_new[latest]:.1f} {sparkline}"
         )
-    return "\n\n".join(blocks) + f"\n\n单位：万｜柱图：近8周周均新增\n\n[查看用户增长运营数据]({SHEET_URL})"
+    return "\n\n".join(blocks) + f"\n\n[查看用户增长运营数据]({SHEET_URL})"
 
 
 def main() -> None:

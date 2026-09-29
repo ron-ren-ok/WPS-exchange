@@ -88,7 +88,11 @@ class AcquisitionProgressTests(unittest.TestCase):
         targets = {"新增": {"第三方": 1, "导量裂变": 1, "AFF联盟": 1}, "MAU": {"三方合作": 1, "导量&裂变": 1, "AFF联盟": 1}}
         with patch.object(REPORT, "target_config", return_value=targets):
             text = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22))
-        self.assertIn("三方换量 MAD ⏳**200.0%**（1.0→2.0）\n\n新增：**100.0%**（1.0→1.0）\n\n昨增：1.0 ", text)
+        self.assertIn("> 三方换量 MAD ⏳**200.0%**（1.0→2.0）\n\n新增：**100.0%**（1.0→1.0）\n\n昨增：1.0 ", text)
+        self.assertEqual(sum(line.startswith("> ") for line in text.splitlines()), len(REPORT.report_channels(REPORT.source_records(rows), targets)))
+        self.assertTrue(all(line.startswith("> ") for line in text.splitlines() if " MAD " in line))
+        self.assertNotIn("单位：", text)
+        self.assertNotIn("柱图：", text)
         self.assertNotIn("🔴", text)
         self.assertNotIn("本月日均", text)
         import re
@@ -145,7 +149,7 @@ class AcquisitionProgressTests(unittest.TestCase):
         targets = {"新增": {"SEM": 1, "Mac": 2}, "MAU": {"SEM": 2, "Mac": 3}}
         with patch.object(REPORT, "target_config", return_value=targets):
             text = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22))
-        self.assertIn("Mac MAD ⏳暂未回传（目标 3.0）\n\n新增：暂未回传（目标 2.0）\n\n昨增：暂未回传", text)
+        self.assertIn("> Mac MAD ⏳暂未回传（目标 3.0）\n\n新增：暂未回传（目标 2.0）\n\n昨增：暂未回传", text)
 
     def test_report_sections_keep_the_requested_channels_separate(self):
         rows = [[cell("日期"), cell("渠道"), cell("新增设备数"), cell("近30日活跃设备数_MAD")]]
