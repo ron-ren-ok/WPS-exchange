@@ -21,6 +21,7 @@ TARGET_SHEET = "目标完成度"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=63683153"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 UNIT_DIVISOR = 10_000
+ACTIVE_WINDOW_DAYS = 42
 SPARKLINE_CHARS = "▁▂▃▄▅▆▇█"
 TARGET_BLOCKS = {
     "合作方预算目标": ("revenue", "合作方预算实际"),
@@ -154,11 +155,18 @@ def target_config(target_rows: list[list[dict]], report_month: int) -> dict[str,
             configs[name] = {"name": name, "target_metric": metric, "target": target}
     return configs
 
-def build_partners(records: list[dict], target_rows: list[list[dict]], report_month: int) -> list[dict]:
-    targets = target_config(target_rows, report_month)
+def build_partners(records: list[dict], target_rows: list[list[dict]], report_date: date) -> list[dict]:
+    targets = target_config(target_rows, report_date.month)
+    start = report_date - timedelta(days=ACTIVE_WINDOW_DAYS - 1)
+    active_names = {
+        record["partner"] for record in records
+        if start <= record["date"] <= report_date
+        and (record["new"] is not None or record["revenue"] is not None)
+    }
     return [
         config for config in targets.values()
-        if any(record["partner"] == config["name"] and record[config["target_metric"]] is not None for record in records)
+        if config["name"] in active_names
+        and any(record["partner"] == config["name"] and record[config["target_metric"]] is not None for record in records)
     ]
 
 
@@ -246,7 +254,7 @@ def report_texts(source_rows: list[list[dict]], target_rows: list[list[dict]]) -
     """Read one snapshot and split partners by their configured monthly target metric."""
     records = source_records(source_rows)
     report_date = latest_actual_date(records)
-    partners = build_partners(records, target_rows, report_date.month)
+    partners = build_partners(records, target_rows, report_date)
     series = make_series(records, partners)
     blocks: dict[str, list[str]] = {"revenue": [], "new": []}
     for partner in partners:
@@ -260,13 +268,11 @@ def report_texts(source_rows: list[list[dict]], target_rows: list[list[dict]]) -
             lines.append(metric_line("血量", series[name]["revenue"], latest, show_trend=True))
         # WPS cards require paragraph breaks, including between the two metric lines.
         blocks[metric].append("\n\n".join(lines))
-    if not any(blocks.values()):
-        raise RuntimeError("No configured partner metrics were available for the latest reporting month.")
     reports = {}
     for metric, partner_blocks in blocks.items():
         # A colored text marker gives the requested unfilled left-border appearance.
         footer = "<font color='#d4dae2'>┃</font> <font color='#808080'>顺序：累计→次日→月末</font>"
-        content = "\n\n".join(partner_blocks) if partner_blocks else "暂无本月已回传数据"
+        content = "\n\n".join(partner_blocks) if partner_blocks else "暂无符合条件的合作方"
         # The sender converts this Markdown separator into a native card hr element.
         reports[metric] = f"{content}\n\n---\n\n{footer}\n\n[查看明细]({SHEET_URL})"
     return reports

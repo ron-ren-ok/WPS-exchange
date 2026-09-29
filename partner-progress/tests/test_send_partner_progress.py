@@ -3,6 +3,7 @@ import re
 import unittest
 from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 MODULE = Path(__file__).resolve().parents[1] / "scripts" / "send_partner_progress.py"
 SPEC = importlib.util.spec_from_file_location("partner_progress", MODULE)
@@ -20,6 +21,51 @@ def cell(text=None, number=None):
 
 
 class PartnerProgressTests(unittest.TestCase):
+    def test_partner_activity_uses_shared_inclusive_42_day_window_and_either_metric(self):
+        cutoff = date(2026, 9, 27)
+        names = ("recent", "boundary", "expired", "revenue_zero", "new_zero", "blank", "future", "new_only")
+        configs = {name: {"name": name, "target_metric": "revenue", "target": 1.0} for name in names}
+        configs["new_only"]["target_metric"] = "new"
+
+        def record(name, offset, new=None, revenue=None):
+            return {"partner": name, "date": cutoff - timedelta(days=offset),
+                    "operation": "气泡", "new": new, "revenue": revenue}
+
+        records = [record("recent", 0, revenue=1.0), record("boundary", 41, revenue=1.0),
+                   record("expired", 42, revenue=1.0), record("revenue_zero", 0, revenue=0.0),
+                   record("new_zero", 0, new=0.0), record("new_zero", 50, revenue=1.0),
+                   record("blank", 0), record("blank", 50, revenue=1.0),
+                   record("future", -1, revenue=1.0), record("new_only", 1, new=2.0)]
+        with patch.object(PROGRESS, "target_config", return_value=configs) as config:
+            partners = PROGRESS.build_partners(records, [], cutoff)
+        config.assert_called_once_with([], 9)
+        self.assertEqual([partner["name"] for partner in partners],
+                         ["recent", "boundary", "revenue_zero", "new_zero", "new_only"])
+
+    def test_inactive_partner_is_restored_when_data_returns_without_changing_targets(self):
+        cutoff = date(2026, 9, 27)
+        config = {"CAD": {"name": "CAD", "target_metric": "new", "target": 1.0}}
+        records = [{"partner": "CAD", "date": cutoff - timedelta(days=42),
+                    "operation": "气泡", "new": 1.0, "revenue": None}]
+        with patch.object(PROGRESS, "target_config", return_value=config):
+            self.assertEqual(PROGRESS.build_partners(records, [], cutoff), [])
+            records.append({"partner": "CAD", "date": cutoff, "operation": "气泡", "new": 0.0, "revenue": None})
+            self.assertEqual(PROGRESS.build_partners(records, [], cutoff), [config["CAD"]])
+
+    def test_all_inactive_partners_produce_empty_status_cards_instead_of_failure(self):
+        cutoff = date(2026, 9, 27)
+        def row(day, name):
+            return [cell(number=(day - date(1899, 12, 30)).days), cell(name), cell("气泡"), cell(number=100), cell()]
+        rows = [[cell(header) for header in PROGRESS.REQUIRED_SOURCE_HEADERS],
+                row(cutoff - timedelta(days=42), "CAD"), row(cutoff, "Unconfigured")]
+        targets = [[cell(), cell("合作方新增目标"), cell("合作方新增实际")],
+                   [cell("月份"), cell("CAD"), cell("CAD")],
+                   [cell("9月"), cell(number=1), cell(number=999)]]
+        reports = PROGRESS.report_texts(rows, targets)
+        for report in reports.values():
+            self.assertIn("暂无符合条件的合作方", report)
+            self.assertNotIn("**CAD**", report)
+
     def test_long_table_uses_headers_and_aggregates_all_operations(self):
         rows = [
             [cell("运营位"), cell("血量"), cell("日期"), cell("合作方"), cell("新增")],
