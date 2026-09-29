@@ -27,6 +27,13 @@ if ($ValidateOnly) { [pscustomobject]@{ SecretLoaded = $true; Webhook = 'configu
 
 if ($CardTitle -or $CardSubtitle -or $CardText) {
     if ([string]::IsNullOrWhiteSpace($CardTitle) -or [string]::IsNullOrWhiteSpace($CardText)) { throw '卡片需要 CardTitle 和 CardText。' }
+    $parts = [regex]::Split($CardText, '\r?\n\r?\n---\r?\n\r?\n')
+    $elements = @(
+        for ($index = 0; $index -lt $parts.Count; $index++) {
+            if ($index -gt 0) { @{ tag = 'hr'; style = 'solid' } }
+            @{ tag = 'text'; content = @{ type = 'markdown'; text = $parts[$index] } }
+        }
+    )
     $payload = @{
         msgtype = 'card'
         card = @{
@@ -34,7 +41,7 @@ if ($CardTitle -or $CardSubtitle -or $CardText) {
                 title = @{ tag = 'text'; content = @{ type = 'plainText'; text = $CardTitle } }
                 subtitle = @{ tag = 'text'; content = @{ type = 'plainText'; text = $CardSubtitle } }
             }
-            elements = @(@{ tag = 'text'; content = @{ type = 'markdown'; text = $CardText } })
+            elements = $elements
         }
     }
 } elseif (-not [string]::IsNullOrWhiteSpace($Markdown)) {

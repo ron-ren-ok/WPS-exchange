@@ -188,10 +188,11 @@ def average(series: dict[date, float], end: date, days: int) -> float | None:
 
 def percent_change(current: float | None, previous: float | None) -> str:
     if current is None or previous is None or previous == 0:
-        return "**—**"
+        return "**—** "
     change = (current / previous - 1) * 100
     arrow = "↑" if change > 0 else "↓" if change < 0 else "→"
-    return f"{arrow} **{abs(change):.1f}%**"
+    # WPS mobile needs whitespace after closing bold markers before a separator.
+    return f"{arrow} **{abs(change):.1f}%** "
 
 
 def metric_line(label: str, series: dict[date, float], latest: date) -> str:
@@ -202,7 +203,7 @@ def metric_line(label: str, series: dict[date, float], latest: date) -> str:
     seven_before_previous = average(series, latest - timedelta(days=14), 7)
     value = f"{current:.2f}" if current is not None else "—"
     return (
-        f"{label}：**{value}**｜{percent_change(current, previous_day)}｜"
+        f"{label}：**{value}** ｜{percent_change(current, previous_day)}｜"
         f"{percent_change(seven, seven_previous)}｜"
         f"{percent_change(seven_previous, seven_before_previous)}"
     )
@@ -217,8 +218,8 @@ def partner_heading(name: str, series: dict[date, float], latest: date, target: 
     completion = f"{completed / target * 100:.0f}%" if target > 0 else "—"
     status = "✅" if target > 0 and completed >= target else "完成度"
     return (
-        f"> <font color='#000000'>**{name} · {latest.month}/{latest.day}　"
-        f"累计 {completed:.2f} → 预计 {projected:.2f}｜{status} {completion}**</font>"
+        f"> <font color='#000000'>**{name} · {latest.month}/{latest.day}｜{status} {completion}** </font>  \n"
+        f"> <font color='#000000'>**累计 {completed:.2f} → 预计 {projected:.2f}** </font>"
     )
 
 
@@ -244,10 +245,12 @@ def report_texts(source_rows: list[list[dict]], target_rows: list[list[dict]]) -
         raise RuntimeError("No configured partner metrics were available for the latest reporting month.")
     reports = {}
     for metric, partner_blocks in blocks.items():
-        units = "新增：万人；血量及累计/预计：万美元" if metric == "revenue" else "新增及累计/预计：万人"
         legend = "绝对值｜当日环比｜本期7日均环比｜上期7日均环比"
+        # A colored text marker gives the requested unfilled left-border appearance.
+        footer = f"<font color='#d4dae2'>┃</font> <font color='#808080'>{legend}</font>"
         content = "\n\n".join(partner_blocks) if partner_blocks else "暂无本月已回传数据"
-        reports[metric] = f"{legend}\n\n{units}\n\n{content}\n\n[查看明细]({SHEET_URL})"
+        # The sender converts this Markdown separator into a native card hr element.
+        reports[metric] = f"{content}\n\n---\n\n{footer}\n\n[查看明细]({SHEET_URL})"
     return reports
 
 

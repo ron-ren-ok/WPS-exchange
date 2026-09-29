@@ -1,4 +1,5 @@
 import importlib.util
+import re
 import unittest
 from datetime import date, timedelta
 from pathlib import Path
@@ -54,7 +55,7 @@ class PartnerProgressTests(unittest.TestCase):
         # 9/27 vs 9/20: 20/5; 9/21–27 vs 9/14–20: 80/23;
         # 9/14–20 vs 9/7–13: 23/7. Earlier outliers must be irrelevant.
         series[date(2026, 9, 6)] = 99999.0
-        expected = "**20.00**｜↑ **300.0%**｜↑ **247.8%**｜↑ **228.6%**"
+        expected = "**20.00** ｜↑ **300.0%** ｜↑ **247.8%** ｜↑ **228.6%** "
         for label in ("新增", "血量"):
             self.assertEqual(PROGRESS.metric_line(label, series, latest), f"{label}：{expected}")
 
@@ -62,25 +63,26 @@ class PartnerProgressTests(unittest.TestCase):
         latest = date(2026, 9, 27)
         self.assertEqual(PROGRESS.average({latest: 0.0}, latest, 7), 0.0)
         self.assertIsNone(PROGRESS.average({}, latest, 7))
-        self.assertEqual(PROGRESS.percent_change(0.0, 2.0), "↓ **100.0%**")
-        self.assertEqual(PROGRESS.percent_change(1.0, 0.0), "**—**")
-        self.assertEqual(PROGRESS.percent_change(None, 2.0), "**—**")
-        self.assertEqual(PROGRESS.percent_change(2.0, 2.0), "→ **0.0%**")
-        self.assertEqual(PROGRESS.metric_line("新增", {}, latest), "新增：**—**｜**—**｜**—**｜**—**")
+        self.assertEqual(PROGRESS.percent_change(0.0, 2.0), "↓ **100.0%** ")
+        self.assertEqual(PROGRESS.percent_change(1.0, 0.0), "**—** ")
+        self.assertEqual(PROGRESS.percent_change(None, 2.0), "**—** ")
+        self.assertEqual(PROGRESS.percent_change(2.0, 2.0), "→ **0.0%** ")
+        self.assertEqual(PROGRESS.metric_line("新增", {}, latest), "新增：**—** ｜**—** ｜**—** ｜**—** ")
 
     def test_incomplete_windows_average_reported_dates_without_zero_filling(self):
         latest = date(2026, 9, 27)
         series = {latest: 8.0, latest - timedelta(days=6): 0.0,
                   latest - timedelta(days=7): 2.0, latest - timedelta(days=14): 1.0}
         self.assertEqual(PROGRESS.metric_line("血量", series, latest),
-                         "血量：**8.00**｜↑ **300.0%**｜↑ **100.0%**｜↑ **100.0%**")
+                         "血量：**8.00** ｜↑ **300.0%** ｜↑ **100.0%** ｜↑ **100.0%** ")
 
     def test_heading_preserves_monthly_forecast_and_actual_completion(self):
         latest = date(2026, 9, 27)
         series = {date(2026, 9, 1) + timedelta(days=i): 1.0 for i in range(27)}
         series[date(2026, 8, 31)] = 999.0
         self.assertEqual(PROGRESS.partner_heading("Opera", series, latest, 20.0),
-                         "> <font color='#000000'>**Opera · 9/27　累计 27.00 → 预计 30.00｜✅ 135%**</font>")
+                         "> <font color='#000000'>**Opera · 9/27｜✅ 135%** </font>  \n"
+                         "> <font color='#000000'>**累计 27.00 → 预计 30.00** </font>")
         self.assertIn("完成度 54%", PROGRESS.partner_heading("Opera", series, latest, 50.0))
         self.assertIn("完成度 —", PROGRESS.partner_heading("Opera", series, latest, 0.0))
 
@@ -112,13 +114,33 @@ class PartnerProgressTests(unittest.TestCase):
         self.assertNotIn("28日", revenue)
         self.assertNotIn("近12周", revenue)
         self.assertNotIn("\\n", revenue)
-        self.assertEqual(revenue.count("> <font color='#000000'>**"), 1)
-        self.assertEqual(new.count("> <font color='#000000'>**"), 2)
+        self.assertEqual(revenue.count("> <font color='#000000'>**"), 2)
+        self.assertEqual(new.count("> <font color='#000000'>**"), 4)
+        for report in reports.values():
+            body, footer = report.split("\n\n---\n\n")
+            self.assertNotIn("绝对值｜", body)
+            self.assertNotIn("万人", report)
+            self.assertNotIn("万美元", report)
+            self.assertTrue(footer.startswith("<font color='#d4dae2'>┃</font> <font color='#808080'>"))
+            self.assertLess(footer.index("绝对值｜"), footer.index("[查看明细]"))
+            self.assertIsNone(re.search(r"(?m)^> ", footer))
 
     def test_missing_daily_new_users_in_revenue_report_are_not_zero_filled(self):
         latest = date(2026, 9, 27)
         line = PROGRESS.metric_line("新增", {latest - timedelta(days=1): 5.0}, latest)
-        self.assertTrue(line.startswith("新增：**—**｜**—**"))
+        self.assertTrue(line.startswith("新增：**—** ｜**—** "))
+
+    def test_mobile_bold_tokens_have_trailing_spaces_and_quote_has_hard_break(self):
+        latest = date(2026, 9, 27)
+        series = {latest: 2.0, latest - timedelta(days=7): 1.0}
+        heading = PROGRESS.partner_heading("Opera GX", series, latest, 1.0)
+        self.assertEqual(len(heading.splitlines()), 2)
+        self.assertIn("</font>  \n> ", heading)
+        for text in (heading, PROGRESS.metric_line("新增", series, latest),
+                     PROGRESS.metric_line("血量", {}, latest)):
+            matches = list(re.finditer(r"\*\*(.*?)\*\*(.)", text))
+            self.assertTrue(matches)
+            self.assertTrue(all(match.group(2) == " " for match in matches))
 
 
     def test_target_config_finds_named_blocks_after_leading_rows(self):

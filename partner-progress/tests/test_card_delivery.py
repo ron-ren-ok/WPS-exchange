@@ -63,7 +63,9 @@ class CardDeliveryTests(unittest.TestCase):
 
     def test_sender_preserves_markdown_and_rejects_application_errors(self):
         sender = ROOT / "partner-progress/scripts/send-wps-webhook.ps1"
-        markdown = "> <font color='#000000'>**Opera**</font>\n\n新增：**0.04**"
+        body = "> <font color='#000000'>**Opera** </font>\n\n新增：**0.04** "
+        footer = "<font color='#d4dae2'>┃</font> <font color='#808080'>绝对值｜当日环比｜本期7日均环比｜上期7日均环比</font>\n\n[查看明细](https://example.invalid/sheet)"
+        markdown = body + "\n\n---\n\n" + footer
         for response, rejected in [('{"code":0}', False), ('{"result":"ok"}', False),
                                    ('{"code":403}', True), ('{"success":false}', True),
                                    ('{"result":"error"}', True), ('not json', True)]:
@@ -85,7 +87,11 @@ class CardDeliveryTests(unittest.TestCase):
                 result = self.run_ps(script)
                 self.assertEqual(result["rejected"], rejected)
                 self.assertEqual(result["payload"]["msgtype"], "card")
-                self.assertEqual(result["payload"]["card"]["elements"][0]["content"]["text"], markdown)
+                elements = result["payload"]["card"]["elements"]
+                self.assertEqual([element["tag"] for element in elements], ["text", "hr", "text"])
+                self.assertEqual(elements[0]["content"]["text"], body)
+                self.assertEqual(elements[1]["style"], "solid")
+                self.assertEqual(elements[2]["content"]["text"], footer)
 
 
 if __name__ == "__main__":
