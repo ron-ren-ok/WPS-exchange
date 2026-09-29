@@ -88,15 +88,15 @@ class AcquisitionProgressTests(unittest.TestCase):
         targets = {"新增": {"第三方": 1, "导量裂变": 1, "AFF联盟": 1}, "MAU": {"三方合作": 1, "导量&裂变": 1, "AFF联盟": 1}}
         with patch.object(REPORT, "target_config", return_value=targets):
             text = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22))
-        self.assertIn("> 三方换量 MAD ⏳**200.0%**（1.0→2.0）\n\n新增：**100.0%**（1.0→1.0）\n\n昨增：1.0 ", text)
+        self.assertIn("> **三方换量 MAD** ✅️**200.0%**（1.0→2.0）\n\n新增：**100.0%**（1.0→1.0）\n\n昨增：1.0 ", text)
         self.assertEqual(sum(line.startswith("> ") for line in text.splitlines()), len(REPORT.report_channels(REPORT.source_records(rows), targets)))
-        self.assertTrue(all(line.startswith("> ") for line in text.splitlines() if " MAD " in line))
+        self.assertTrue(all(line.startswith("> ") for line in text.splitlines() if " MAD**" in line))
         self.assertNotIn("单位：", text)
         self.assertNotIn("柱图：", text)
         self.assertNotIn("🔴", text)
         self.assertNotIn("本月日均", text)
         import re
-        self.assertTrue(all(re.fullmatch(r"\d+\.\d%", value) for value in re.findall(r"\*\*(.*?)\*\*", text)))
+        self.assertTrue(all(re.fullmatch(r"\d+\.\d%", value) or value.endswith(" MAD") for value in re.findall(r"\*\*(.*?)\*\*", text)))
         self.assertNotIn("数据截至", text)
         self.assertNotIn("`", text)
 
@@ -107,8 +107,8 @@ class AcquisitionProgressTests(unittest.TestCase):
         targets = {"新增": {"三方合作": 1}, "MAU": {"三方合作": 2}}
         with patch.object(REPORT, "target_config", return_value=targets):
             text = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22))
-        self.assertIn("SEM MAD ⏳", text)
-        self.assertIn("整体 MAD ⏳", text)
+        self.assertIn("**SEM MAD**", text)
+        self.assertIn("**整体 MAD**", text)
         self.assertIn("目标待同步", text)
         self.assertIn("新增：**100.0%**（1.0→1.0）", text)
 
@@ -149,7 +149,7 @@ class AcquisitionProgressTests(unittest.TestCase):
         targets = {"新增": {"SEM": 1, "Mac": 2}, "MAU": {"SEM": 2, "Mac": 3}}
         with patch.object(REPORT, "target_config", return_value=targets):
             text = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22))
-        self.assertIn("> Mac MAD ⏳暂未回传（目标 3.0）\n\n新增：暂未回传（目标 2.0）\n\n昨增：暂未回传", text)
+        self.assertIn("> **Mac MAD** ⏳暂未回传（目标 3.0）\n\n新增：暂未回传（目标 2.0）\n\n昨增：暂未回传", text)
 
     def test_report_sections_keep_the_requested_channels_separate(self):
         rows = [[cell("日期"), cell("渠道"), cell("新增设备数"), cell("近30日活跃设备数_MAD")]]
@@ -160,12 +160,12 @@ class AcquisitionProgressTests(unittest.TestCase):
         with patch.object(REPORT, "target_config", return_value=targets):
             partner = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22), channels=REPORT.REPORT_SECTIONS["partner"])
             other = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22), channels=REPORT.REPORT_SECTIONS["other"])
-        self.assertIn("三方合作 MAD ⏳", partner)
-        self.assertIn("Affiliate MAD ⏳", partner)
-        self.assertNotIn("整体 MAD ⏳", partner)
-        self.assertIn("Mac MAD ⏳", other)
-        self.assertNotIn("Affiliate MAD ⏳", other)
-        self.assertLess(other.index("Mac MAD ⏳"), other.index("其他 MAD ⏳"))
+        self.assertIn("**三方合作 MAD**", partner)
+        self.assertIn("**Affiliate MAD**", partner)
+        self.assertNotIn("**整体 MAD**", partner)
+        self.assertIn("**Mac MAD**", other)
+        self.assertNotIn("**Affiliate MAD**", other)
+        self.assertLess(other.index("**Mac MAD**"), other.index("**其他 MAD**"))
 
     def test_sparkline_uses_eight_seven_day_averages(self):
         from datetime import timedelta
@@ -175,6 +175,15 @@ class AcquisitionProgressTests(unittest.TestCase):
         series[latest - timedelta(days=56)] = 1000
         bars, _ = REPORT.weekly_sparkline(series, latest)
         self.assertEqual(bars, "▁▂▃▄▅▆▇█")
+
+    def test_mad_status_uses_actual_target_not_rounded_percentage(self):
+        self.assertEqual(REPORT.mad_line("整体", 100, 100), "> **整体 MAD** ✅️**100.0%**（100.0→100.0）")
+        self.assertIn("✅️**101.0%**", REPORT.mad_line("Affiliate", 101, 100))
+        self.assertIn("⏳**99.0%**", REPORT.mad_line("三方合作", 99, 100))
+        self.assertIn("⏳**100.0%**", REPORT.mad_line("整体", 99.99, 100))
+        for target in (None, 0):
+            self.assertIn("⏳", REPORT.mad_line("SEM", 10, target))
+            self.assertNotIn("✅", REPORT.mad_line("SEM", 10, target))
 
     def test_zero_target_does_not_produce_completion_rate(self):
         self.assertEqual(REPORT.metric_line("新增：", 1.25, 0), "新增：1.2（目标待同步）")
