@@ -34,17 +34,27 @@ jobs:
           cache-dependency-path: partner-progress/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Validate report calculations and card delivery
+        run: python -m unittest discover -s tests -v
       - name: Prepare partner progress content
         env:
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
-        run: python scripts/send_partner_progress.py --output "$RUNNER_TEMP/wps-partner-progress.md"
-      - name: Send WPS partner progress card
+        run: >-
+          python scripts/send_partner_progress.py
+          --revenue-output "$RUNNER_TEMP/wps-revenue-partners.md"
+          --new-output "$RUNNER_TEMP/wps-new-partners.md"
+      - name: Send revenue then new-user partner cards
         shell: pwsh
         env:
-          WPS_WEBHOOK_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.webhook_target == 'test' && secrets.WPS_WEBHOOK_URL_TEST || secrets.WPS_WEBHOOK_URL }}
+          WPS_WEBHOOK_URL: ${{ secrets[github.event_name == 'workflow_dispatch' && inputs.webhook_target == 'test' && 'WPS_WEBHOOK_URL_TEST' || 'WPS_WEBHOOK_URL'] }}
           WPS_WEBHOOK_KEY: ${{ secrets.WPS_WEBHOOK_KEY }}
           WPS_WEBHOOK_SECRET: ${{ secrets.WPS_WEBHOOK_SECRET }}
         run: |
-          $cardText = Get-Content -LiteralPath "$env:RUNNER_TEMP/wps-partner-progress.md" -Raw -Encoding utf8
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:WPS_WEBHOOK_URL)) { throw 'The selected Webhook target is not configured.' }
+          $revenueText = Get-Content -LiteralPath "$env:RUNNER_TEMP/wps-revenue-partners.md" -Raw -Encoding utf8
+          $newText = Get-Content -LiteralPath "$env:RUNNER_TEMP/wps-new-partners.md" -Raw -Encoding utf8
           $beijingDate = [DateTime]::UtcNow.AddHours(8).ToString('yyyy-MM-dd')
-          ./scripts/send-wps-webhook.ps1 -CardTitle '📣合作方数据汇报及达成预测' -CardSubtitle $beijingDate -CardText $cardText -WebhookUrl $env:WPS_WEBHOOK_URL
+          ./scripts/send-wps-webhook.ps1 -CardTitle '📊血量合作方日报' -CardSubtitle $beijingDate -CardText $revenueText -WebhookUrl $env:WPS_WEBHOOK_URL
+          Start-Sleep -Seconds 3
+          ./scripts/send-wps-webhook.ps1 -CardTitle '📊新增合作方日报' -CardSubtitle $beijingDate -CardText $newText -WebhookUrl $env:WPS_WEBHOOK_URL

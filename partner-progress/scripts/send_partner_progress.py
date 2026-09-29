@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import calendar
 import json
-import math
 import os
 import sys
 from datetime import date, timedelta
@@ -189,98 +188,79 @@ def average(series: dict[date, float], end: date, days: int) -> float | None:
 
 def percent_change(current: float | None, previous: float | None) -> str:
     if current is None or previous is None or previous == 0:
-        return "--"
-    return f"{(current / previous - 1) * 100:+.1f}%"
+        return "**—**"
+    change = (current / previous - 1) * 100
+    arrow = "↑" if change > 0 else "↓" if change < 0 else "→"
+    return f"{arrow} **{abs(change):.1f}%**"
 
 
 def metric_line(label: str, series: dict[date, float], latest: date) -> str:
-    current = series[latest]
+    current = series.get(latest)
     previous_day = series.get(latest - timedelta(days=7))
     seven = average(series, latest, 7)
     seven_previous = average(series, latest - timedelta(days=7), 7)
-    twenty_eight = average(series, latest, 28)
-    twenty_eight_previous = average(series, latest - timedelta(days=28), 28)
+    seven_before_previous = average(series, latest - timedelta(days=14), 7)
+    value = f"{current:.2f}" if current is not None else "—"
     return (
-        f"🔴**{label}：{current:.2f}万，环比 {percent_change(current, previous_day)}；"
-        f"7日均 {seven:.2f}万，环比 {percent_change(seven, seven_previous)}；"
-        f"28日均 {twenty_eight:.2f}万，环比 {percent_change(twenty_eight, twenty_eight_previous)}**"
+        f"{label}：**{value}**｜{percent_change(current, previous_day)}｜"
+        f"{percent_change(seven, seven_previous)}｜"
+        f"{percent_change(seven_previous, seven_before_previous)}"
     )
 
 
-def forecast_line(label: str, series: dict[date, float], latest: date, target: float) -> str:
+def partner_heading(name: str, series: dict[date, float], latest: date, target: float) -> str:
     month_start = latest.replace(day=1)
     completed = sum(value for day, value in series.items() if month_start <= day <= latest)
     daily_average = average(series, latest, 14)
     days_in_month = calendar.monthrange(latest.year, latest.month)[1]
     projected = completed + (daily_average or 0) * (days_in_month - latest.day)
-    if completed >= target:
-        reach = f"已于 {latest.month}.{latest.day} 达成目标"
-    elif not daily_average or projected < target:
-        reach = "预计本月无法达成目标"
-    else:
-        reach_day = latest + timedelta(days=math.ceil((target - completed) / daily_average))
-        reach = f"预计 {reach_day.month}.{reach_day.day} 达成目标"
-    unit = "万" if label == "新增目标预测" else "万美元"
+    completion = f"{completed / target * 100:.0f}%" if target > 0 else "—"
+    status = "✅" if target > 0 and completed >= target else "完成度"
     return (
-        f"🔴**{label}：当月目标 {target:.2f}{unit}；截至当日，完成 {completed:.2f}{unit}；"
-        f"预计本月可完成 {projected:.2f}{unit}；{reach}**"
+        f"> <font color='#000000'>**{name} · {latest.month}/{latest.day}　"
+        f"累计 {completed:.2f} → 预计 {projected:.2f}｜{status} {completion}**</font>"
     )
 
 
-def sparkline(values: list[float]) -> str:
-    """Render a compact eight-level trend without exposing implementation data."""
-    if not values:
-        return ""
-    low, high = min(values), max(values)
-    if high == low:
-        return chr(0x2585) * len(values)
-    return "".join(chr(0x2581 + round((value - low) / (high - low) * 7)) for value in values)
-
-
-def weekly_prediction_line(metric: str, series: dict[date, float], latest: date) -> str:
-    """Show the forecast daily-rate trend used by the 14-day target forecast."""
-    week_ends = [latest - timedelta(days=7 * offset) for offset in range(11, -1, -1)]
-    predicted_daily_averages = [average(series, end, 14) or 0.0 for end in week_ends]
-    metric_label = "\u8840\u91cf" if metric == "revenue" else "\u65b0\u589e"
-    return f"\U0001f534**\u8fd112\u5468{metric_label}\u9884\u6d4b\u65e5\u5747 {sparkline(predicted_daily_averages)}**"
-
-
-def report_text(source_rows: list[list[dict]], target_rows: list[list[dict]]) -> str:
+def report_texts(source_rows: list[list[dict]], target_rows: list[list[dict]]) -> dict[str, str]:
+    """Read one snapshot and split partners by their configured monthly target metric."""
     records = source_records(source_rows)
     report_date = latest_actual_date(records)
     partners = build_partners(records, target_rows, report_date.month)
     series = make_series(records, partners)
-    blocks: list[str] = []
+    blocks: dict[str, list[str]] = {"revenue": [], "new": []}
     for partner in partners:
         name, metric = partner["name"], partner["target_metric"]
         latest = latest_metric_date(series[name][metric], report_date)
         if latest is None:
             continue
-        weekdays = ("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
-        lines = [f"➡️**{name}：{latest.month}.{latest.day} {weekdays[latest.weekday()]}**"]
-        if latest in series[name]["new"]:
-            lines.append(metric_line("新增", series[name]["new"], latest))
-        elif metric == "revenue":
-            lines.append("🔴**新增：当日未回传**")
+        lines = [partner_heading(name, series[name][metric], latest, partner["target"])]
+        lines.append(metric_line("新增", series[name]["new"], latest))
         if metric == "revenue":
             lines.append(metric_line("血量", series[name]["revenue"], latest))
-            lines.append(forecast_line("血量目标预测", series[name]["revenue"], latest, partner["target"]))
-        else:
-            lines.append(forecast_line("新增目标预测", series[name]["new"], latest, partner["target"]))
-        lines.append(weekly_prediction_line(metric, series[name][metric], latest))
-        blocks.append("\n\n".join(lines))
-    if not blocks:
+        # WPS cards require paragraph breaks, including between the two metric lines.
+        blocks[metric].append("\n\n".join(lines))
+    if not any(blocks.values()):
         raise RuntimeError("No configured partner metrics were available for the latest reporting month.")
-    return "\n\n".join(blocks) + f"\n\n[查看合作方新增血量]({SHEET_URL})"
+    reports = {}
+    for metric, partner_blocks in blocks.items():
+        units = "新增：万人；血量及累计/预计：万美元" if metric == "revenue" else "新增及累计/预计：万人"
+        legend = "绝对值｜当日环比｜本期7日均环比｜上期7日均环比"
+        content = "\n\n".join(partner_blocks) if partner_blocks else "暂无本月已回传数据"
+        reports[metric] = f"{legend}\n\n{units}\n\n{content}\n\n[查看明细]({SHEET_URL})"
+    return reports
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare a WPS partner-progress report.")
-    parser.add_argument("--output", required=True, help="UTF-8 output file for the WPS card body")
+    parser.add_argument("--revenue-output", required=True, help="UTF-8 Markdown for revenue partners")
+    parser.add_argument("--new-output", required=True, help="UTF-8 Markdown for new-user partners")
     args = parser.parse_args()
     source_rows, target_rows = read_data()
-    Path(args.output).write_text(report_text(source_rows, target_rows), encoding="utf-8")
-    print("WPS partner progress content prepared.")
+    reports = report_texts(source_rows, target_rows)
+    Path(args.revenue_output).write_text(reports["revenue"], encoding="utf-8")
+    Path(args.new_output).write_text(reports["new"], encoding="utf-8")
+    print("WPS revenue and new-user partner reports prepared from one snapshot.")
 
 
 if __name__ == "__main__":

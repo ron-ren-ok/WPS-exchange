@@ -61,4 +61,12 @@ if ($WebhookKey -and $WebhookSecret) {
 }
 
 $response = Invoke-WebRequest -Uri $WebhookUrl -Method Post -ContentType 'application/json' -Headers $headers -Body $body -UseBasicParsing
+if (-not [string]::IsNullOrWhiteSpace($response.Content)) {
+    try { $result = $response.Content | ConvertFrom-Json } catch { throw 'Webhook returned a non-JSON response; delivery is unconfirmed.' }
+    foreach ($field in @('code', 'errcode')) {
+        if ($null -ne $result.$field -and [string]$result.$field -ne '0') { throw 'Webhook rejected the message.' }
+    }
+    if ($null -ne $result.success -and $result.success -eq $false) { throw 'Webhook rejected the message.' }
+    if ($null -ne $result.result -and [string]$result.result -ne 'ok') { throw 'Webhook rejected the message.' }
+}
 [pscustomobject]@{ StatusCode = $response.StatusCode; Success = $true }
