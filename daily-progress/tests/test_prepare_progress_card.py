@@ -86,7 +86,7 @@ class ProgressCardTests(unittest.TestCase):
             {"date": date(2026, 9, 3), "partner": "360", "operation": "气泡", "新增": 990000, "血量": None},
         ]
         text = CARD.card_content(records, {"血量": 20, "360新增": 60}, date(2026, 9, 2))
-        plain = re.sub(r"(?m)^> ", "", re.sub(r"<[^>]*>", "", text))
+        plain = re.sub(r"(?m)^┃ ", "", re.sub(r"<[^>]*>", "", text))
         self.assertIn("⚠ 数据不全 · 1 个合作方\n\n360", plain)
         for gray_text in ["⚠ 数据不全 · 1 个合作方", "360", "已回传", "未回传", "后续预测", "预计缺口", "│ 目标位置"]:
             self.assertIn(f"<font color='#8c8c8c'>{gray_text}</font>", text)
@@ -105,7 +105,8 @@ class ProgressCardTests(unittest.TestCase):
         self.assertIn("⚠ 数据不全", footer_text)
         self.assertIn("目标位置", footer_text)
         self.assertEqual(len(footer_text.split("\n\n")), 3)
-        self.assertTrue(all(paragraph.startswith("> ") for paragraph in footer_text.split("\n\n")))
+        self.assertTrue(all(paragraph.startswith("<font color='#d4dae2'>┃</font> ") for paragraph in footer_text.split("\n\n")))
+        self.assertNotRegex(footer_text, r"(?m)^> ")
         for index in [0, 2, 5]:
             self.assertFalse(elements[index]["content"]["text"].startswith("> "))
         self.assertEqual(CARD.elements_content(elements), text)
@@ -125,7 +126,7 @@ class ProgressCardTests(unittest.TestCase):
         records = [{"date": date(2026, 9, 2), "partner": "Avast", "operation": "气泡", "新增": 100, "血量": 10000}]
         text = CARD.card_content(records, {"血量": 10, "360新增": 60}, date(2026, 9, 2))
         self.assertIn("当月尚未回传，暂不预测", text)
-        self.assertIn("⚠ 数据不全 · 1 个合作方\n\n> 360", re.sub(r"<[^>]*>", "", text))
+        self.assertIn("⚠ 数据不全 · 1 个合作方\n\n┃ 360", re.sub(r"<[^>]*>", "", text))
 
     def test_no_month_data_or_invalid_target_fails(self):
         with self.assertRaises(ValueError):
