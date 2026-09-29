@@ -88,7 +88,7 @@ class AcquisitionProgressTests(unittest.TestCase):
         targets = {"新增": {"第三方": 1, "导量裂变": 1, "AFF联盟": 1}, "MAU": {"三方合作": 1, "导量&裂变": 1, "AFF联盟": 1}}
         with patch.object(REPORT, "target_config", return_value=targets):
             text = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22))
-        self.assertIn("> **三方换量** ✅️**200.0%**（🎯1.0｜📍2.0）\n\n新增：**100.0%**（🎯1.0｜📍1.0）\n\n昨增：1.0 ", text)
+        self.assertIn("> **三方换量** ✅️**200.0%** (🎯1.0｜📍2.0)\n\n新增：**100.0%** (🎯1.0｜📍1.0)\n\n昨增：1.0 ", text)
         self.assertEqual(sum(line.startswith("> ") for line in text.splitlines()), len(REPORT.report_channels(REPORT.source_records(rows), targets)))
         self.assertTrue(all(line.startswith("> ") for line in text.splitlines() if line.startswith("> ")))
         self.assertNotIn(" MAD", text)
@@ -112,7 +112,7 @@ class AcquisitionProgressTests(unittest.TestCase):
         self.assertIn("**SEM**", text)
         self.assertIn("**整体**", text)
         self.assertIn("目标待同步", text)
-        self.assertIn("新增：**100.0%**（🎯1.0｜📍1.0）", text)
+        self.assertIn("新增：**100.0%** (🎯1.0｜📍1.0)", text)
 
     def test_target_config_accepts_new_channel_headers(self):
         rows = [
@@ -151,7 +151,7 @@ class AcquisitionProgressTests(unittest.TestCase):
         targets = {"新增": {"SEM": 1, "Mac": 2}, "MAU": {"SEM": 2, "Mac": 3}}
         with patch.object(REPORT, "target_config", return_value=targets):
             text = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22))
-        self.assertIn("> **Mac** ⏳暂未回传（🎯3.0）\n\n新增：暂未回传（🎯2.0）\n\n昨增：暂未回传", text)
+        self.assertIn("> **Mac** ⏳暂未回传 (🎯3.0)\n\n新增：暂未回传 (🎯2.0)\n\n昨增：暂未回传", text)
 
     def test_report_sections_keep_the_requested_channels_separate(self):
         rows = [[cell("日期"), cell("渠道"), cell("新增设备数"), cell("近30日活跃设备数_MAD")]]
@@ -179,7 +179,7 @@ class AcquisitionProgressTests(unittest.TestCase):
         self.assertEqual(bars, "▁▂▃▄▅▆▇█")
 
     def test_mad_status_uses_actual_target_not_rounded_percentage(self):
-        self.assertEqual(REPORT.mad_line("整体", 100, 100), "> **整体** ✅️**100.0%**（🎯100.0｜📍100.0）")
+        self.assertEqual(REPORT.mad_line("整体", 100, 100), "> **整体** ✅️**100.0%** (🎯100.0｜📍100.0)")
         self.assertIn("✅️**101.0%**", REPORT.mad_line("Affiliate", 101, 100))
         self.assertIn("⏳**99.0%**", REPORT.mad_line("三方合作", 99, 100))
         self.assertIn("⏳**100.0%**", REPORT.mad_line("整体", 99.99, 100))
@@ -188,7 +188,7 @@ class AcquisitionProgressTests(unittest.TestCase):
             self.assertNotIn("✅", REPORT.mad_line("SEM", 10, target))
 
     def test_zero_target_does_not_produce_completion_rate(self):
-        self.assertEqual(REPORT.metric_line("新增：", 1.25, 0), "新增：📍1.2（目标待同步）")
+        self.assertEqual(REPORT.metric_line("新增：", 1.25, 0), "新增：📍1.2 (目标待同步)")
 
 
     def test_subtitle_includes_send_date_and_elapsed_month_progress(self):

@@ -232,8 +232,8 @@ def matching_target(targets: dict[str, float], channel: str) -> float | None:
 
 def metric_line(label: str, actual: float, target: float | None) -> str:
     if target is None or target <= 0:
-        return f"{label}📍{actual:.1f}（目标待同步）"
-    return f"{label}**{actual / target:.1%}**（🎯{target:.1f}｜📍{actual:.1f}）"
+        return f"{label}📍{actual:.1f} (目标待同步)"
+    return f"{label}**{actual / target:.1%}** (🎯{target:.1f}｜📍{actual:.1f})"
 
 
 def mad_line(channel: str, actual: float, target: float | None) -> str:
@@ -246,8 +246,8 @@ def missing_actual_block(channel: str, new_target: float | None, mau_target: flo
         return f"🎯{target:.1f}" if target is not None else "目标待同步"
 
     return (
-        f"> **{channel}** ⏳暂未回传（{target_text(mau_target)}）\n\n"
-        f"新增：暂未回传（{target_text(new_target)}）\n\n"
+        f"> **{channel}** ⏳暂未回传 ({target_text(mau_target)})\n\n"
+        f"新增：暂未回传 ({target_text(new_target)})\n\n"
         f"昨增：暂未回传"
     )
 
