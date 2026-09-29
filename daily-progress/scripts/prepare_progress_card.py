@@ -113,15 +113,19 @@ def card_elements(records: list[dict], targets: dict[str, float], cutoff: date) 
         f"<font color='{color}'>{mark}</font> {gray(label)}"
         for color, mark, label in zip(COLORS, MARKS, ("已回传", "未回传", "后续预测", "预计缺口"))
     ]) + "　" + gray("│ 目标位置")
-    def text_element(text: str) -> dict:
-        return {"tag": "text", "content": {"type": "markdown", "text": text}}
+    def text_element(text: str, text_size: str | None = None) -> dict:
+        content = {"type": "markdown", "text": text}
+        if text_size:
+            content["text_size"] = text_size
+        return {"tag": "text", "content": content}
 
     return [
         text_element(metric_block("血量", "万美元", revenue, targets["血量"])),
         {"tag": "hr", "style": "solid"},
         text_element(metric_block("360 新增", "万", users, targets["360新增"])),
         {"tag": "hr", "style": "solid"},
-        text_element("\n\n".join([status, legend, f"[查看合作方新增血量]({daily.SHEET_URL})"])),
+        text_element("\n\n".join([status, legend]), text_size="small"),
+        text_element(f"[查看合作方新增血量]({daily.SHEET_URL})"),
     ]
 
 
