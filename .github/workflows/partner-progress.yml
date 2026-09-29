@@ -54,7 +54,10 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:WPS_WEBHOOK_URL)) { throw 'The selected Webhook target is not configured.' }
           $revenueText = Get-Content -LiteralPath "$env:RUNNER_TEMP/wps-revenue-partners.md" -Raw -Encoding utf8
           $newText = Get-Content -LiteralPath "$env:RUNNER_TEMP/wps-new-partners.md" -Raw -Encoding utf8
-          $beijingDate = [DateTime]::UtcNow.AddHours(8).ToString('yyyy-MM-dd')
-          ./scripts/send-wps-webhook.ps1 -CardTitle '📊血量合作方日报' -CardSubtitle $beijingDate -CardText $revenueText -WebhookUrl $env:WPS_WEBHOOK_URL
+          $beijingNow = [DateTime]::UtcNow.AddHours(8)
+          $daysInMonth = [DateTime]::DaysInMonth($beijingNow.Year, $beijingNow.Month)
+          $timeProgress = [Math]::Round(($beijingNow.Day - 1) / $daysInMonth * 100)
+          $cardSubtitle = "$($beijingNow.ToString('yyyy-MM-dd')) · 时间进度 $timeProgress%"
+          ./scripts/send-wps-webhook.ps1 -CardTitle '📊血量合作方日报' -CardSubtitle $cardSubtitle -CardText $revenueText -WebhookUrl $env:WPS_WEBHOOK_URL
           Start-Sleep -Seconds 3
-          ./scripts/send-wps-webhook.ps1 -CardTitle '📊新增合作方日报' -CardSubtitle $beijingDate -CardText $newText -WebhookUrl $env:WPS_WEBHOOK_URL
+          ./scripts/send-wps-webhook.ps1 -CardTitle '📊新增合作方日报' -CardSubtitle $cardSubtitle -CardText $newText -WebhookUrl $env:WPS_WEBHOOK_URL

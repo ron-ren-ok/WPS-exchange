@@ -25,19 +25,23 @@ class CardDeliveryTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         return json.loads(completed.stdout)
 
-    def send_workflow(self, fail_first=False):
+    def send_workflow(self, fail_first=False, beijing_date="2026-09-29"):
         workflow = (ROOT / ".github/workflows/partner-progress.yml").read_text(encoding="utf-8")
         send_block = workflow.split("        run: |\n", 1)[1]
         send_block = "\n".join(line[10:] for line in send_block.splitlines())
         send_block = send_block.replace("./scripts/send-wps-webhook.ps1", "Send-TestCard")
+        send_block = send_block.replace("[DateTime]::UtcNow.AddHours(8)",
+                                        f"[DateTime]::Parse({ps_quote(beijing_date)})")
         with tempfile.TemporaryDirectory() as temp:
             Path(temp, "wps-revenue-partners.md").write_text("revenue body", encoding="utf-8")
             Path(temp, "wps-new-partners.md").write_text("new body", encoding="utf-8")
             script = """
                 $ErrorActionPreference = 'Stop'
                 $events = [System.Collections.Generic.List[string]]::new()
+                $subtitles = [System.Collections.Generic.List[string]]::new()
                 function Send-TestCard($CardTitle, $CardSubtitle, $CardText, $WebhookUrl) {
                     $events.Add("send:$CardTitle|$CardText")
+                    $subtitles.Add($CardSubtitle)
                     if ($script:failFirst -and $events.Count -eq 1) { throw 'mock rejection' }
                 }
                 function Start-Sleep($Seconds) { $events.Add("sleep:$Seconds") }
@@ -47,7 +51,7 @@ class CardDeliveryTests(unittest.TestCase):
             script += "$env:WPS_WEBHOOK_URL = 'https://example.invalid/test'\n"
             script += f"$script:failFirst = ${str(fail_first).lower()}\n"
             script += "try {\n" + send_block + "\n} catch { $failed = $true }\n"
-            script += "@{events=@($events.ToArray()); failed=$failed} | ConvertTo-Json -Compress"
+            script += "@{events=@($events.ToArray()); subtitles=@($subtitles.ToArray()); failed=$failed} | ConvertTo-Json -Compress"
             return self.run_ps(script)
 
     def test_actual_workflow_sends_revenue_then_waits_three_seconds_then_new(self):
@@ -60,6 +64,15 @@ class CardDeliveryTests(unittest.TestCase):
         result = self.send_workflow(fail_first=True)
         self.assertTrue(result["failed"])
         self.assertEqual(result["events"], ["send:📊血量合作方日报|revenue body"])
+
+    def test_both_subtitles_show_date_and_elapsed_month_progress(self):
+        for report_date, progress in [("2026-09-29", 93), ("2026-10-01", 0),
+                                      ("2028-02-29", 97)]:
+            with self.subTest(report_date=report_date):
+                result = self.send_workflow(beijing_date=report_date)
+                self.assertFalse(result["failed"])
+                subtitle = f"{report_date} · 时间进度 {progress}%"
+                self.assertEqual(result["subtitles"], [subtitle, subtitle])
 
     def test_sender_preserves_markdown_and_rejects_application_errors(self):
         sender = ROOT / "partner-progress/scripts/send-wps-webhook.ps1"
