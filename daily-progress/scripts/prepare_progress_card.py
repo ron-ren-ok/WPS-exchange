@@ -113,25 +113,32 @@ def card_elements(records: list[dict], targets: dict[str, float], cutoff: date) 
         f"<font color='{color}'>{mark}</font> {gray(label)}"
         for color, mark, label in zip(COLORS, MARKS, ("已回传", "未回传", "后续预测", "预计缺口"))
     ]) + "　" + gray("│ 目标位置")
-    def text_element(text: str, text_size: str | None = None) -> dict:
-        content = {"type": "markdown", "text": text}
-        if text_size:
-            content["text_size"] = text_size
-        return {"tag": "text", "content": content}
+    def text_element(text: str) -> dict:
+        return {"tag": "text", "content": {"type": "markdown", "text": text}}
 
     return [
         text_element(metric_block("血量", "万美元", revenue, targets["血量"])),
         {"tag": "hr", "style": "solid"},
         text_element(metric_block("360 新增", "万", users, targets["360新增"])),
         {"tag": "hr", "style": "solid"},
-        text_element("\n\n".join([status, legend]), text_size="small"),
+        {"tag": "note", "elements": [text_element("\n\n".join([status, legend]))]},
         text_element(f"[查看合作方新增血量]({daily.SHEET_URL})"),
     ]
 
 
 def card_content(records: list[dict], targets: dict[str, float], cutoff: date) -> str:
     """Plain-text companion; separators are native elements in the sent card."""
-    return "\n\n".join(element["content"]["text"] for element in card_elements(records, targets, cutoff) if element["tag"] == "text")
+    return elements_content(card_elements(records, targets, cutoff))
+
+
+def elements_content(elements: list[dict]) -> str:
+    paragraphs = []
+    for element in elements:
+        if element["tag"] == "text":
+            paragraphs.append(element["content"]["text"])
+        elif element["tag"] == "note":
+            paragraphs.append(elements_content(element["elements"]))
+    return "\n\n".join(paragraphs)
 
 
 def card_subtitle(cutoff: date, report_date: date) -> str:
@@ -150,7 +157,7 @@ def main() -> None:
     cutoff = daily.parse_day(args.end_date) if args.end_date else today - timedelta(days=1)
     source, targets = daily.request_values()
     elements = card_elements(daily.long_records(source), daily.monthly_targets(targets, cutoff.month), cutoff)
-    content = "\n\n".join(element["content"]["text"] for element in elements if element["tag"] == "text")
+    content = elements_content(elements)
     Path(args.output).write_text(content, encoding="utf-8")
     if args.elements_output:
         Path(args.elements_output).write_text(json.dumps(elements, ensure_ascii=False), encoding="utf-8")
