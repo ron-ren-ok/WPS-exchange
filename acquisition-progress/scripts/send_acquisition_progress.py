@@ -208,7 +208,7 @@ def report_subtitle(sent_date: date, data_date: date) -> str:
 
 def weekly_sparkline(series: dict[date, float], latest: date) -> tuple[str, str]:
     buckets = []
-    for bucket in range(11, -1, -1):
+    for bucket in range(7, -1, -1):
         end = latest - timedelta(days=bucket * 7)
         values = [series.get(end - timedelta(days=offset), 0) for offset in range(7)]
         buckets.append(sum(values) / 7)
@@ -231,20 +231,19 @@ def matching_target(targets: dict[str, float], channel: str) -> float | None:
 
 
 def metric_line(label: str, actual: float, target: float | None) -> str:
-    if target is None:
-        return f"🔴{label} **{actual:.2f}万**（目标待同步）"
-    return f"🔴{label} **{actual:.2f}万 / {target:.2f}万**（{actual / target:.1%}）"
+    if target is None or target <= 0:
+        return f"{label}{actual:.1f}（目标待同步）"
+    return f"{label}**{actual / target:.1%}**（{target:.1f}→{actual:.1f}）"
 
 
 def missing_actual_block(channel: str, new_target: float | None, mau_target: float | None) -> str:
     def target_text(target: float | None) -> str:
-        return f"{target:.2f}万目标" if target is not None else "目标待同步"
+        return f"目标 {target:.1f}" if target is not None else "目标待同步"
 
     return (
-        f"**➡️{channel}**\n\n"
-        f"🔴昨日新增 **暂未回传**\n\n"
-        f"🔴本月新增 **暂未回传 / {target_text(new_target)}**\n\n"
-        f"🔴近30天 MAD **暂未回传 / {target_text(mau_target)}**"
+        f"{channel} MAD ⏳暂未回传（{target_text(mau_target)}）\n\n"
+        f"新增：暂未回传（{target_text(new_target)}）\n\n"
+        f"昨增：暂未回传"
     )
 
 
@@ -262,7 +261,6 @@ def report_text(
     records = [record for record in records if record["date"] <= latest]
     targets = target_config(target_rows, latest.month)
     month_start = latest.replace(day=1)
-    days_in_month = calendar.monthrange(latest.year, latest.month)[1]
     blocks = []
     for channel in channels or tuple(report_channels(records, targets)):
         matched = [record for record in records if record["channel"] == channel]
@@ -279,22 +277,13 @@ def report_text(
             blocks.append(missing_actual_block(channel, new_target, mau_target))
             continue
         month_actual = sum(value for day, value in daily_new.items() if month_start <= day <= latest)
-        daily_actual = month_actual / latest.day
-        daily_target = new_target / days_in_month if new_target is not None else None
         sparkline, _ = weekly_sparkline(daily_new, latest)
-        daily_average = (
-            f"**{daily_actual:.2f}万 / {daily_target:.2f}万**"
-            if daily_target is not None
-            else f"**{daily_actual:.2f}万**（目标待同步）"
-        )
         blocks.append(
-            f"**➡️{channel}**\n\n"
-            f"🔴昨日新增 **{daily_new[latest]:.2f}万**　|　本月日均 {daily_average}\n\n"
-            f"{metric_line('本月新增', month_actual, new_target)}\n\n"
-            f"{metric_line('近30天 MAD', daily_mau[latest], mau_target)}\n\n"
-            f"🔴近12周新增日均 {sparkline}"
+            f"{metric_line(f'{channel} MAD ⏳', daily_mau[latest], mau_target)}\n\n"
+            f"{metric_line('新增：', month_actual, new_target)}\n\n"
+            f"昨增：{daily_new[latest]:.1f} {sparkline}"
         )
-    return "\n\n".join(blocks) + f"\n\n[查看用户增长运营数据]({SHEET_URL})"
+    return "\n\n".join(blocks) + f"\n\n单位：万｜柱图：近8周周均新增\n\n[查看用户增长运营数据]({SHEET_URL})"
 
 
 def main() -> None:

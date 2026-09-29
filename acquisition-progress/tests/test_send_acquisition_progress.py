@@ -88,8 +88,11 @@ class AcquisitionProgressTests(unittest.TestCase):
         targets = {"新增": {"第三方": 1, "导量裂变": 1, "AFF联盟": 1}, "MAU": {"三方合作": 1, "导量&裂变": 1, "AFF联盟": 1}}
         with patch.object(REPORT, "target_config", return_value=targets):
             text = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22))
-        self.assertIn("**➡️三方换量**\n\n🔴昨日新增", text)
-        self.assertIn("）\n\n🔴近30天 MAD", text)
+        self.assertIn("三方换量 MAD ⏳**200.0%**（1.0→2.0）\n\n新增：**100.0%**（1.0→1.0）\n\n昨增：1.0 ", text)
+        self.assertNotIn("🔴", text)
+        self.assertNotIn("本月日均", text)
+        import re
+        self.assertTrue(all(re.fullmatch(r"\d+\.\d%", value) for value in re.findall(r"\*\*(.*?)\*\*", text)))
         self.assertNotIn("数据截至", text)
         self.assertNotIn("`", text)
 
@@ -100,10 +103,10 @@ class AcquisitionProgressTests(unittest.TestCase):
         targets = {"新增": {"三方合作": 1}, "MAU": {"三方合作": 2}}
         with patch.object(REPORT, "target_config", return_value=targets):
             text = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22))
-        self.assertIn("**➡️SEM**", text)
-        self.assertIn("**➡️整体**", text)
+        self.assertIn("SEM MAD ⏳", text)
+        self.assertIn("整体 MAD ⏳", text)
         self.assertIn("目标待同步", text)
-        self.assertIn("**1.00万 / 1.00万**", text)
+        self.assertIn("新增：**100.0%**（1.0→1.0）", text)
 
     def test_target_config_accepts_new_channel_headers(self):
         rows = [
@@ -142,8 +145,7 @@ class AcquisitionProgressTests(unittest.TestCase):
         targets = {"新增": {"SEM": 1, "Mac": 2}, "MAU": {"SEM": 2, "Mac": 3}}
         with patch.object(REPORT, "target_config", return_value=targets):
             text = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22))
-        self.assertIn("**➡️Mac**", text)
-        self.assertIn("暂未回传 / 2.00万目标", text)
+        self.assertIn("Mac MAD ⏳暂未回传（目标 3.0）\n\n新增：暂未回传（目标 2.0）\n\n昨增：暂未回传", text)
 
     def test_report_sections_keep_the_requested_channels_separate(self):
         rows = [[cell("日期"), cell("渠道"), cell("新增设备数"), cell("近30日活跃设备数_MAD")]]
@@ -154,12 +156,24 @@ class AcquisitionProgressTests(unittest.TestCase):
         with patch.object(REPORT, "target_config", return_value=targets):
             partner = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22), channels=REPORT.REPORT_SECTIONS["partner"])
             other = REPORT.report_text(rows, [], expected_date=date(2026, 7, 22), channels=REPORT.REPORT_SECTIONS["other"])
-        self.assertIn("**➡️三方合作**", partner)
-        self.assertIn("**➡️Affiliate**", partner)
-        self.assertNotIn("**➡️整体**", partner)
-        self.assertIn("**➡️Mac**", other)
-        self.assertNotIn("**➡️Affiliate**", other)
-        self.assertLess(other.index("**➡️Mac**"), other.index("**➡️其他**"))
+        self.assertIn("三方合作 MAD ⏳", partner)
+        self.assertIn("Affiliate MAD ⏳", partner)
+        self.assertNotIn("整体 MAD ⏳", partner)
+        self.assertIn("Mac MAD ⏳", other)
+        self.assertNotIn("Affiliate MAD ⏳", other)
+        self.assertLess(other.index("Mac MAD ⏳"), other.index("其他 MAD ⏳"))
+
+    def test_sparkline_uses_eight_seven_day_averages(self):
+        from datetime import timedelta
+        latest = date(2026, 9, 28)
+        series = {latest - timedelta(days=offset): float(7 - offset // 7) for offset in range(56)}
+        # Older history must not change the scale or number of bars.
+        series[latest - timedelta(days=56)] = 1000
+        bars, _ = REPORT.weekly_sparkline(series, latest)
+        self.assertEqual(bars, "▁▂▃▄▅▆▇█")
+
+    def test_zero_target_does_not_produce_completion_rate(self):
+        self.assertEqual(REPORT.metric_line("新增：", 1.25, 0), "新增：1.2（目标待同步）")
 
 
     def test_subtitle_includes_send_date_and_elapsed_month_progress(self):
