@@ -179,34 +179,39 @@ def actual_metric_summary(records: list[dict], metric: str, cutoff: date, predic
     }
 
 
-def partner_daily_series(records: list[dict], metric: str, predicate=lambda record: True) -> dict[str, dict[int, float]]:
+def partner_daily_series(records: list[dict], metric: str, predicate=lambda record: True) -> dict[str, dict[date, float]]:
     """Aggregate all positions into one daily series for each partner."""
-    series: dict[str, dict[int, float]] = defaultdict(lambda: defaultdict(float))
+    series: dict[str, dict[date, float]] = defaultdict(lambda: defaultdict(float))
     for record in records:
         if predicate(record) and record[metric] is not None:
-            series[record["partner"]][record["date"].day] += record[metric] / RAW_UNIT_DIVISOR
+            series[record["partner"]][record["date"]] += record[metric] / RAW_UNIT_DIVISOR
     return {partner: dict(values) for partner, values in series.items()}
 
 
-def projected_partner_series(series: dict[int, float], cutoff: date) -> tuple[float, float]:
-    """Fill after each partner's last actual day with its preceding 14-day mean."""
-    last_actual = max(series)
-    recent_days = [day for day in sorted(series) if day <= last_actual][-14:]
-    average = sum(series[day] for day in recent_days) / len(recent_days)
-    actual_total = sum(series.values())
-    measured_cumulative = actual_total + average * max(0, cutoff.day - last_actual)
+def projected_partner_series(series: dict[date, float], cutoff: date) -> tuple[float, float]:
+    """Forecast this month using returned days in the last 14 calendar days, across months."""
+    month_start = cutoff.replace(day=1)
+    current_days = [day for day in series if month_start <= day <= cutoff]
+    last_actual = max(current_days)
+    window_start = last_actual - timedelta(days=13)
+    recent_values = [value for day, value in series.items() if window_start <= day <= last_actual]
+    average = sum(recent_values) / len(recent_values)
+    actual_total = sum(series[day] for day in current_days)
+    measured_cumulative = actual_total + average * (cutoff - last_actual).days
     days_in_month = calendar.monthrange(cutoff.year, cutoff.month)[1]
-    projected = actual_total + average * max(0, days_in_month - last_actual)
+    projected = actual_total + average * (days_in_month - last_actual.day)
     return measured_cumulative, projected
 
 
 def forecast_metric_summary(records: list[dict], metric: str, cutoff: date, predicate=lambda record: True) -> dict:
-    series = partner_daily_series(records, metric, predicate)
-    if not series:
+    series = partner_daily_series([record for record in records if record["date"] <= cutoff], metric, predicate)
+    month_start = cutoff.replace(day=1)
+    current_partners = [partner for partner, values in series.items() if any(month_start <= day <= cutoff for day in values)]
+    if not current_partners:
         raise RuntimeError(f"No {metric} data is available for the report month.")
     cumulative = projected = 0.0
-    for values in series.values():
-        current, month_total = projected_partner_series(values, cutoff)
+    for partner in current_partners:
+        current, month_total = projected_partner_series(series[partner], cutoff)
         cumulative += current
         projected += month_total
     return {"cumulative": cumulative, "projected": projected}
@@ -259,10 +264,10 @@ def report(records: list[dict], targets: dict[str, float], cutoff: date) -> tupl
     if not monthly:
         raise RuntimeError(f"\u5408\u4f5c\u65b9\u65b0\u589e\u8840\u91cf has no records for {cutoff:%Y-%m}.")
     revenue = actual_metric_summary(monthly, "\u8840\u91cf", cutoff)
-    forecast_revenue = forecast_metric_summary(monthly, "\u8840\u91cf", cutoff)
+    forecast_revenue = forecast_metric_summary(records, "\u8840\u91cf", cutoff)
     has_360_new = metric_available(monthly, "\u65b0\u589e", lambda record: record["partner"] == "360")
     users = actual_metric_summary(monthly, "\u65b0\u589e", cutoff, lambda record: record["partner"] == "360") if has_360_new else None
-    forecast_users = forecast_metric_summary(monthly, "\u65b0\u589e", cutoff, lambda record: record["partner"] == "360") if has_360_new else None
+    forecast_users = forecast_metric_summary(records, "\u65b0\u589e", cutoff, lambda record: record["partner"] == "360") if has_360_new else None
     status = source_status(monthly, cutoff, required_partners=("360",))
     daily_users = (
         progress_line('360 ', users, targets['360\u65b0\u589e'], cutoff)

@@ -20,9 +20,10 @@ TEXT_GRAY = "#8c8c8c"
 def metric_summary(records: list[dict], metric: str, target: float, cutoff: date, predicate=lambda r: True) -> dict | None:
     if target <= 0:
         raise ValueError("Monthly target must be greater than zero.")
-    if not daily.metric_available(records, metric, predicate):
+    monthly = [r for r in records if (r["date"].year, r["date"].month) == (cutoff.year, cutoff.month) and r["date"] <= cutoff]
+    if not daily.metric_available(monthly, metric, predicate):
         return None
-    actual = daily.actual_metric_summary(records, metric, cutoff, predicate)["cumulative"]
+    actual = daily.actual_metric_summary(monthly, metric, cutoff, predicate)["cumulative"]
     forecast = daily.forecast_metric_summary(records, metric, cutoff, predicate)
     measured, projected = forecast["cumulative"], forecast["projected"]
     parts = [actual, measured - actual, projected - measured, max(target - projected, 0)]
@@ -100,8 +101,8 @@ def card_elements(records: list[dict], targets: dict[str, float], cutoff: date) 
     monthly = [r for r in records if (r["date"].year, r["date"].month) == (cutoff.year, cutoff.month) and r["date"] <= cutoff]
     if not monthly:
         raise ValueError(f"No source data for {cutoff:%Y-%m}.")
-    revenue = metric_summary(monthly, "血量", targets["血量"], cutoff)
-    users = metric_summary(monthly, "新增", targets["360新增"], cutoff, lambda r: r["partner"] == "360")
+    revenue = metric_summary(records, "血量", targets["血量"], cutoff)
+    users = metric_summary(records, "新增", targets["360新增"], cutoff, lambda r: r["partner"] == "360")
     partners = sorted({r["partner"] for r in monthly} | {"360"})
     returned = {r["partner"] for r in monthly if r["date"] == cutoff}
     missing = [p for p in partners if p not in returned]

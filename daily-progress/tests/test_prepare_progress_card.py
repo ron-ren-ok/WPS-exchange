@@ -122,6 +122,25 @@ class ProgressCardTests(unittest.TestCase):
         self.assertNotIn("data:image", text)
         self.assertNotIn("万人", text)
 
+    def test_forecast_uses_returned_days_in_cross_month_14_day_window(self):
+        records = [
+            {"date": day, "partner": "360", "operation": "气泡", "新增": value, "血量": value}
+            for day, value in [
+                (date(2026, 9, 23), 500000),  # Outside the 9/24–10/7 forecast window.
+                (date(2026, 9, 24), 40000),
+                (date(2026, 10, 1), 10000),
+                (date(2026, 10, 7), 20000),
+                (date(2026, 10, 9), 900000),  # After the report cutoff.
+            ]
+        ]
+        elements = CARD.card_elements(records, {"血量": 100, "360新增": 100}, date(2026, 10, 8))
+        for index in (0, 2):
+            block = elements[index]["content"]["text"]
+            self.assertIn("已回传 **3.00**", block)
+            self.assertIn("预测回传 **5.33**", block)
+            self.assertIn("月底预测 **59.00**", block)
+            self.assertIn("预计完成率 59.0%", block)
+
     def test_missing_360_is_not_rendered_as_zero_or_forecast(self):
         records = [{"date": date(2026, 9, 2), "partner": "Avast", "operation": "气泡", "新增": 100, "血量": 10000}]
         text = CARD.card_content(records, {"血量": 10, "360新增": 60}, date(2026, 9, 2))
