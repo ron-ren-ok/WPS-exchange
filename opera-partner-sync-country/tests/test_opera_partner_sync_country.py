@@ -13,6 +13,23 @@ spec.loader.exec_module(sync)
 
 
 class OperaCountrySyncTest(unittest.TestCase):
+    def test_recall_aggregates_and_writes_opera_uninstall_guidance(self):
+        raw = io.BytesIO()
+        with zipfile.ZipFile(raw, "w") as archive:
+            archive.writestr("report.csv", "Day,Campaign,Country,New Users,Revenue\n"
+                             "2026-10-08,recall2/opera.exe,DE,2000,$200.00\n"
+                             "2026-10-08,recall2/opera.exe,de,869,$37.69\n"
+                             "2026-10-08,wpstest,DE,10,$1.00\n"
+                             "2026-10-08,recall,DE,999,$99.00\n"
+                             "2026-10-07,recall2/opera.exe,DE,123,$12.00\n")
+        day = date(2026, 10, 8)
+        source = sync.parse_report(raw.getvalue(), day, day)
+        self.assertEqual(source, {(day, "DE", "卸载引导"): {"new_users": 2869, "blood_volume": 237.69},
+                                  (day, "DE", "气泡"): {"new_users": 10, "blood_volume": 1}})
+        _, appends = sync.plan_writes(list(sync.HEADERS), {}, source, overwrite=False)
+        self.assertIn({"日期": day, "合作方": "Opera", "国家代码": "DE", "运营位": "卸载引导",
+                       "新增": 2869, "血量": 237.69}, appends)
+
     def test_only_the_newest_matching_email_is_read(self):
         def message(attachment):
             result = EmailMessage()

@@ -20,7 +20,7 @@ PARTNER = "Opera"
 EXPECTED_MAILBOX = "54lingbai@gmail.com"
 SENDER = "noreply@lookermail.com"
 SUBJECT = "Opera for Computers distribution partner - download"
-SURFACES = {"wpstest2/opera.exe": "换量弹窗", "wpstest": "气泡"}
+SURFACES = {"wpstest2/opera.exe": "换量弹窗", "wpstest": "气泡", "recall2/opera.exe": "卸载引导"}
 NON_COUNTRY_VALUES = {"UNKNOWN"}
 ALIASES = {
     "date": ("date", "day"),

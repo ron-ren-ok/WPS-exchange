@@ -6,11 +6,14 @@
 | --- | --- | --- |
 | `wpstest2/opera.exe` | Opera | 换量弹窗 |
 | `wpstest` | Opera | 气泡 |
+| `recall2/opera.exe` | Opera | 卸载引导 |
 | `toast`（GX 报表的 `Utm Content`） | Opera GX | 气泡 |
 | `bundle`（GX 报表的 `Utm Content`） | Opera GX | 换量弹窗 |
 | `recall`（GX 报表的 `Utm Content`） | Opera GX | 卸载引导 |
 
 长表字段为「日期、合作方、运营位、新增、血量」。同步器以「日期 + 合作方 + 运营位」定位记录：已有记录更新新增和血量；不存在则追加一行。
+
+Opera 的 `recall2/opera.exe` 从 `Campaign` 列识别，`New Users` 写入新增，`Revenue` 写入血量。历史报表或某日没有这个新 campaign 时跳过，不生成零值记录，也不阻断换量弹窗和气泡同步。Opera GX 的卸载引导仍从 `Utm Content=recall` 识别。
 
 Opera GX 日常同步仅解析发件人 `noreply@lookermail.com`、标题为 `OperaGX for Computers distribution partner dashboard` 的最新一封匹配邮件；该滚动看板中的 `bundle` 对应换量弹窗，`toast` 对应气泡，`recall` 对应卸载引导。某个运营位未出现在报表中时跳过该项，不生成零值记录，也不阻断其他运营位同步。
 

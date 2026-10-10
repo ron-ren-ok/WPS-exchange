@@ -32,6 +32,7 @@ PARTNER = "Opera"
 SURFACES = {
     "popup": {"campaign": "wpstest2/opera.exe", "operation": "换量弹窗"},
     "bubble": {"campaign": "wpstest", "operation": "气泡"},
+    "recall": {"campaign": "recall2/opera.exe", "operation": "卸载引导"},
 }
 
 
@@ -203,7 +204,8 @@ def dashboard_source_rows(client, start, end, gx=False, since=None, include_hist
         raise RuntimeError(f"no compatible {'OperaGX' if gx else 'Opera'} PDF attachments found")
     if not gx:
         for surface, rows in sources.items():
-            if not rows:
+            # Older reports predate the uninstall-guidance campaign.
+            if not rows and surface != "recall":
                 raise RuntimeError(f"no verified {surface} Opera PDF rows in the requested date range")
     print(json.dumps({
         "partner": GX_PARTNER if gx else PARTNER,

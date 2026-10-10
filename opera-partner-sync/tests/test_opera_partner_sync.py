@@ -22,6 +22,42 @@ Performance
 
 
 class OperaTests(unittest.TestCase):
+    def test_opera_recall_routes_screenshot_metrics_to_uninstall_guidance(self):
+        text = """Summary table
+Day Campaign New Users Revenue
+1 2026-10-08 wpstest 85,661 $10,633.42
+2 2026-10-08 wpstest2/opera.exe 75,853 $8,450.19
+3 2026-10-08 recall2/opera.exe 2,869 $237.69
+4 2026-10-07 recall2/opera.exe 2,978 $251.41
+5 2026-10-06 recall2/opera.exe 3,028 $251.12
+6 2026-10-05 recall2/opera.exe 3,187 $271.25
+7 2026-10-08 wpstest_gx 42,205 $5,833.75
+"""
+        day = date(2026, 10, 8)
+        with patch.object(OPERA, "imap_messages", return_value=[{"From": OPERA.SENDER}]), \
+             patch.object(OPERA, "attachments", return_value=[b"pdf"]), \
+             patch.object(OPERA, "extract_pdf_text", return_value=text) as extractor:
+            sources = OPERA.dashboard_source_rows(object(), day, day)
+        extractor.assert_called_once_with(b"pdf")
+        self.assertEqual(sources["recall"], {day: {"new_users": 2869, "blood_volume": 237.69}})
+        self.assertEqual(OPERA.parse_opera_text(text, "recall2/opera.exe")[date(2026, 10, 6)],
+                         {"new_users": 3028, "blood_volume": 251.12})
+        updates, appends, overwrites = OPERA.plan_writes(
+            list(OPERA.HEADERS), {}, {"recall": sources["recall"]}, allow_overwrite=False)
+        self.assertEqual((updates, overwrites), ([], []))
+        self.assertEqual(appends, [{"日期": day, "合作方": "Opera", "运营位": "卸载引导",
+                                   "新增": 2869, "血量": 237.69}])
+
+    def test_opera_historical_report_without_recall_skips_zero_rows(self):
+        with patch.object(OPERA, "imap_messages", return_value=[{"From": OPERA.SENDER}]), \
+             patch.object(OPERA, "attachments", return_value=[b"pdf"]), \
+             patch.object(OPERA, "extract_pdf_text", return_value=PDF_TEXT):
+            sources = OPERA.dashboard_source_rows(object(), date(2026, 7, 11), date(2026, 7, 12))
+        self.assertEqual(sources["recall"], {})
+        _, appends, _ = OPERA.plan_writes(list(OPERA.HEADERS), {}, sources, allow_overwrite=False)
+        self.assertEqual(len(appends), 4)
+        self.assertNotIn("卸载引导", [row["运营位"] for row in appends])
+
     def test_campaign_mapping(self):
         bubble = OPERA.parse_opera_text(PDF_TEXT, "wpstest")
         popup = OPERA.parse_opera_text(PDF_TEXT, "wpstest2/opera.exe")
@@ -217,7 +253,7 @@ class PerformanceTests(unittest.TestCase):
         self.assertEqual(client.uid.call_args_list[0].args, ("search", None, "FROM", OPERA.SENDER, "SUBJECT", f'"{OPERA.SUBJECT}"', "SINCE", "22-Sep-2026"))
         self.assertEqual([call.args[1] for call in client.uid.call_args_list[1:]], [b"102", b"101"])
 
-    def test_one_extraction_for_both_opera_positions_and_early_stop(self):
+    def test_one_extraction_for_all_opera_positions_and_early_stop(self):
         seen = []
         def messages(*args, **kwargs):
             for index in range(3):
@@ -225,12 +261,15 @@ class PerformanceTests(unittest.TestCase):
                 yield {"From": OPERA.SENDER}
         with patch.object(OPERA, "imap_messages", side_effect=messages), \
              patch.object(OPERA, "attachments", return_value=[b"pdf"]), \
-             patch.object(OPERA, "extract_pdf_text", return_value=PDF_TEXT) as extractor:
+             patch.object(OPERA, "extract_pdf_text", return_value=PDF_TEXT +
+                          "5 2026-07-12 recall2/opera.exe 10 $2.00\n"
+                          "6 2026-07-11 recall2/opera.exe 20 $3.00\n") as extractor:
             sources = OPERA.dashboard_source_rows(object(), date(2026, 7, 11), date(2026, 7, 12))
         self.assertEqual(seen, [0])
         extractor.assert_called_once_with(b"pdf")
         self.assertEqual(len(sources["bubble"]), 2)
         self.assertEqual(len(sources["popup"]), 2)
+        self.assertEqual(len(sources["recall"]), 2)
 
     def test_history_fills_gap_and_keeps_newest_values(self):
         latest = PDF_TEXT.replace("4 2026-07-11 wpstest 13,228 $1,083.56", "")
