@@ -1,0 +1,8 @@
+date,country,cookie,brand,partner,installs
+2026-10-08,DE,mmm_ccl_ppi_008_617_b,PIRIFORM,wps,175
+2026-10-09,DE,mmm_ccl_ppi_008_617_b,PIRIFORM,wps,380
+2026-10-10,DE,mmm_ccl_ppi_008_617_b,PIRIFORM,wps,101
+2026-10-08,DE,mmm_wps_ppi_008_595_b,AVAST,wps,7
+2026-10-09,DE,mmm_wps_ppi_008_595_b,AVAST,wps,4
+2026-10-10,DE,mmm_wps_ppi_008_595_b,AVAST,wps,4
+2026-09-09,,mmm_ccl_ppi_008_617_b,PIRIFORM,wps,1

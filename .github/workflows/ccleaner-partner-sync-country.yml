@@ -1,0 +1,48 @@
+name: CCleaner partner sync-Country
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/ccleaner-partner-sync-country.yml"]
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: Start date (YYYY-MM-DD); defaults to two days before the selected end date
+        required: false
+        type: string
+      end_date:
+        description: End date (YYYY-MM-DD); defaults to the newest date in the CSV
+        required: false
+        type: string
+
+concurrency:
+  group: ccleaner-partner-sync-country
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ccleaner-partner-sync-country
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: |
+          args=()
+          if [ -n "$START_DATE" ]; then args+=(--start-date "$START_DATE"); fi
+          if [ -n "$END_DATE" ]; then args+=(--end-date "$END_DATE"); fi
+          python src/ccleaner_partner_sync_country.py "${args[@]}"
+        env:
+          START_DATE: ${{ github.event_name == 'push' && '2026-09-01' || inputs.start_date }}
+          END_DATE: ${{ github.event_name == 'push' && '2026-09-30' || inputs.end_date }}
+          GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
+          GMAIL_IMAP_USERNAME: ${{ secrets.GMAIL_IMAP_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
