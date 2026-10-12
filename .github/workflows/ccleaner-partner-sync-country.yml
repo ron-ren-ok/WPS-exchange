@@ -1,9 +1,6 @@
 name: CCleaner partner sync-Country
 
 on:
-  push:
-    branches: [main]
-    paths: [".github/workflows/ccleaner-partner-sync-country.yml"]
   workflow_dispatch:
     inputs:
       start_date:
@@ -41,8 +38,8 @@ jobs:
           if [ -n "$END_DATE" ]; then args+=(--end-date "$END_DATE"); fi
           python src/ccleaner_partner_sync_country.py "${args[@]}"
         env:
-          START_DATE: ${{ github.event_name == 'push' && '2026-09-01' || inputs.start_date }}
-          END_DATE: ${{ github.event_name == 'push' && '2026-09-30' || inputs.end_date }}
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
           GOOGLE_SHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEET_SERVICE_ACCOUNT_JSON }}
           GMAIL_IMAP_USERNAME: ${{ secrets.GMAIL_IMAP_USERNAME }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
