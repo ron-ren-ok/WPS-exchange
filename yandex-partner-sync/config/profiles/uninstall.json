@@ -1,0 +1,21 @@
+{
+  "status": "active",
+  "country_id": "225",
+  "country_name": "Russia",
+  "pack_ids": [
+    1157518
+  ],
+  "template_sha256": "99d3447b5ee3a6afae4a1deb002a3b2435ed0e75bf35a13de622a94ba50aa1e9",
+  "profile_id": "yandex-uninstall-ru-1157518-vid-777",
+  "version": 1,
+  "surface": "卸载引导",
+  "template": null,
+  "vid_filter": {
+    "operation": "1",
+    "values": [
+      777
+    ]
+  },
+  "allow_empty": true,
+  "filter_fingerprint": "3cc13c6c8d5173f98ed022e5b5d1037b8172632c0a9f3425321acff56440b366"
+}

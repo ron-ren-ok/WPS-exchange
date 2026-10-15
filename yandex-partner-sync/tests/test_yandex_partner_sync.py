@@ -13,6 +13,55 @@ SPEC.loader.exec_module(SYNC)
 
 
 class SyncTests(unittest.TestCase):
+    def test_surface_vid_filters_and_fingerprint(self):
+        for name, operation in (("bubble", "2"), ("uninstall", "1")):
+            profile = SYNC.load_profile(name)
+            fields = {field["id"]: field for field in SYNC.walk(SYNC.build_blocks(profile, date(2026, 10, 14), date(2026, 10, 14)))}
+            self.assertTrue(fields["default_constructor_field_vid_group"]["value"])
+            self.assertEqual(fields["default_constructor_field_vid_operation"]["value"], operation)
+            self.assertEqual(fields["default_constructor_field_vid"]["value"], "777")
+            self.assertEqual(fields["default_constructor_field_pack_id"]["value"], "1157518")
+            profile["vid_filter"]["values"] = [778]
+            with patch.object(SYNC, "load_json", return_value=profile), self.assertRaisesRegex(RuntimeError, "fingerprint mismatch"):
+                SYNC.load_profile(name)
+        popup = SYNC.load_profile("popup")
+        fields = {field["id"]: field for field in SYNC.walk(SYNC.build_blocks(popup, date(2026, 10, 14), date(2026, 10, 14)))}
+        self.assertFalse(fields["default_constructor_field_vid_group"]["value"])
+
+    def test_vid_response_validation_and_uninstall_write(self):
+        day = date(2026, 10, 14)
+        row = {"default_field_dt": day.isoformat(), "default_field_country": "Russia", "default_field_pack_id": 1157518, "default_field_vid": 777, "msetupstatistics_setups": 3, "default_fixed_partner_reward_metric": 2}
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({"rows": [row]}).encode()
+        profile = SYNC.load_profile("uninstall")
+        with patch.object(SYNC, "urlopen", return_value=response) as request:
+            source = SYNC.fetch_daily(profile, day, day, "test")
+        self.assertEqual(request.call_args.args[0].get_header("Authorization"), "OAuth test")
+        updates, appends, _ = SYNC.planned_writes(list(SYNC.HEADERS), {}, source, profile, True)
+        self.assertEqual(updates, [])
+        self.assertEqual(appends, [{"日期": day, "合作方": "Yandex", "运营位": "卸载引导", "新增": 3, "血量": 2}])
+        for name, vid in (("bubble", 777), ("uninstall", 778), ("uninstall", None)):
+            invalid = dict(row, default_field_vid=vid)
+            if vid is None:
+                del invalid["default_field_vid"]
+            response.__enter__.return_value.read.return_value = json.dumps({"rows": [invalid]}).encode()
+            with self.subTest(name=name, vid=vid), patch.object(SYNC, "urlopen", return_value=response), self.assertRaisesRegex(RuntimeError, "VID"):
+                SYNC.fetch_daily(SYNC.load_profile(name), day, day, "test")
+
+    def test_empty_uninstall_skips_but_does_not_hide_errors(self):
+        day = date(2026, 10, 14)
+        response = MagicMock()
+        for payload in ({"rows": []}, {}):
+            response.__enter__.return_value.read.return_value = json.dumps(payload).encode()
+            with patch.object(SYNC, "urlopen", return_value=response):
+                if "rows" in payload:
+                    self.assertEqual(SYNC.fetch_daily(SYNC.load_profile("uninstall"), day, day, "test"), {})
+                    with self.assertRaisesRegex(RuntimeError, "no data"):
+                        SYNC.fetch_daily(SYNC.load_profile("bubble"), day, day, "test")
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "no rows"):
+                        SYNC.fetch_daily(SYNC.load_profile("uninstall"), day, day, "test")
+
     def test_oauth_token_accepts_plain_and_prefixed_values(self):
         self.assertEqual(SYNC.normalize_oauth_token("abc"), "abc")
         self.assertEqual(SYNC.normalize_oauth_token(" OAuth abc "), "abc")
@@ -85,7 +134,7 @@ class SyncTests(unittest.TestCase):
 
     def test_fetch_preserves_inferred_zero_provenance(self):
         profile = SYNC.load_profile("bubble")
-        payload = {"rows": [{"default_field_dt": f"2026-07-{day}", "default_field_country": "Russia", "default_field_pack_id": 1157518, "msetupstatistics_setups": 3, "default_fixed_partner_reward_metric": 2} for day in (13, 15)]}
+        payload = {"rows": [{"default_field_dt": f"2026-07-{day}", "default_field_country": "Russia", "default_field_pack_id": 1157518, "default_field_vid": "", "msetupstatistics_setups": 3, "default_fixed_partner_reward_metric": 2} for day in (13, 15)]}
         response = MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps(payload).encode()
         with patch.object(SYNC, "urlopen", return_value=response):
@@ -198,23 +247,32 @@ class SyncTests(unittest.TestCase):
 
     def test_main_plans_all_profiles_before_any_write(self):
         record, rows = self.append_fixture()
-        profiles = [{"profile_id": "popup", "surface": "换量弹窗"}, {"profile_id": "bubble", "surface": "气泡"}]
+        profiles = [{"profile_id": "popup", "surface": "换量弹窗"}, {"profile_id": "bubble", "surface": "气泡"}, {"profile_id": "uninstall", "surface": "卸载引导"}]
         # Popup could append, but bubble's missing source must prevent all writes.
         source = {record["日期"]: {"new_users": 1, "blood_volume": 1}}
         service = MagicMock()
-        with patch.dict(SYNC.os.environ, {"YANDEX_DISTRIBUTION_TOKEN": "test", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON": "{}"}), patch.object(SYNC.sys, "argv", ["sync", "--start-date", "2026-07-14", "--end-date", "2026-07-14"]), patch.object(SYNC, "google_service", return_value=service), patch.object(SYNC, "sheet_rows", return_value=(list(SYNC.HEADERS), rows)), patch.object(SYNC, "load_profile", side_effect=profiles), patch.object(SYNC, "fetch_daily", side_effect=[source, {}]), patch.object(SYNC, "append_rows") as append, self.assertRaisesRegex(RuntimeError, "refusing all writes"):
+        with patch.dict(SYNC.os.environ, {"YANDEX_DISTRIBUTION_TOKEN": "test", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON": "{}"}), patch.object(SYNC.sys, "argv", ["sync", "--start-date", "2026-07-14", "--end-date", "2026-07-14"]), patch.object(SYNC, "google_service", return_value=service), patch.object(SYNC, "sheet_rows", return_value=(list(SYNC.HEADERS), rows)), patch.object(SYNC, "load_profile", side_effect=profiles), patch.object(SYNC, "fetch_daily", side_effect=[source, {}, {}]), patch.object(SYNC, "append_rows") as append, self.assertRaisesRegex(RuntimeError, "refusing all writes"):
             SYNC.main()
         append.assert_not_called()
         service.spreadsheets.assert_not_called()
 
+    def test_main_syncs_existing_surfaces_when_uninstall_has_no_data(self):
+        day = date(2026, 10, 14)
+        profiles = [SYNC.load_profile(name) for name in SYNC.PROFILE_NAMES]
+        source = {day: {"new_users": 3, "blood_volume": 2}}
+        service = MagicMock()
+        with patch.dict(SYNC.os.environ, {"YANDEX_DISTRIBUTION_TOKEN": "test", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON": "{}"}), patch.object(SYNC.sys, "argv", ["sync", "--start-date", day.isoformat(), "--end-date", day.isoformat()]), patch.object(SYNC, "google_service", return_value=service), patch.object(SYNC, "sheet_rows", return_value=(list(SYNC.HEADERS), {})), patch.object(SYNC, "fetch_daily", side_effect=[source, source, {}]), patch.object(SYNC, "append_rows") as append, patch.object(SYNC, "verify_writes", return_value=2):
+            SYNC.main()
+        self.assertEqual([record["运营位"] for record in append.call_args.args[2]], ["换量弹窗", "气泡"])
+
     def test_main_default_overwrites_and_explicit_disable_prevents_writes(self):
         day = date(2026, 7, 14)
-        profiles = [{"profile_id": "popup", "surface": "换量弹窗"}, {"profile_id": "bubble", "surface": "气泡"}]
+        profiles = [{"profile_id": "popup", "surface": "换量弹窗"}, {"profile_id": "bubble", "surface": "气泡"}, {"profile_id": "uninstall", "surface": "卸载引导"}]
         rows = {(day, "Yandex", profile["surface"]): {"row": index + 2, "values": [day.isoformat(), "Yandex", profile["surface"], 1, 1]} for index, profile in enumerate(profiles)}
         source = {day: {"new_users": 3, "blood_volume": 2}}
         for flag in ([], ["--no-allow-overwrite"]):
             service = MagicMock()
-            with self.subTest(flag=flag), patch.dict(SYNC.os.environ, {"YANDEX_DISTRIBUTION_TOKEN": "test", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON": "{}"}), patch.object(SYNC.sys, "argv", ["sync", "--start-date", "2026-07-14", "--end-date", "2026-07-14"] + flag), patch.object(SYNC, "google_service", return_value=service), patch.object(SYNC, "sheet_rows", return_value=(list(SYNC.HEADERS), rows)), patch.object(SYNC, "load_profile", side_effect=profiles), patch.object(SYNC, "fetch_daily", return_value=source), patch.object(SYNC, "append_rows"), patch.object(SYNC, "verify_writes", return_value=2) as verify:
+            with self.subTest(flag=flag), patch.dict(SYNC.os.environ, {"YANDEX_DISTRIBUTION_TOKEN": "test", "GOOGLE_SHEET_SERVICE_ACCOUNT_JSON": "{}"}), patch.object(SYNC.sys, "argv", ["sync", "--start-date", "2026-07-14", "--end-date", "2026-07-14"] + flag), patch.object(SYNC, "google_service", return_value=service), patch.object(SYNC, "sheet_rows", return_value=(list(SYNC.HEADERS), rows)), patch.object(SYNC, "load_profile", side_effect=profiles), patch.object(SYNC, "fetch_daily", return_value=source), patch.object(SYNC, "append_rows"), patch.object(SYNC, "verify_writes", return_value=3) as verify:
                 if flag:
                     with self.assertRaisesRegex(RuntimeError, "conflicts"):
                         SYNC.main()
@@ -223,7 +281,7 @@ class SyncTests(unittest.TestCase):
                 else:
                     SYNC.main()
                     api = service.spreadsheets.return_value.values.return_value
-                    self.assertEqual(len(api.batchUpdate.call_args.kwargs["body"]["data"]), 4)
+                    self.assertEqual(len(api.batchUpdate.call_args.kwargs["body"]["data"]), 6)
                     verify.assert_called_once()
 
 

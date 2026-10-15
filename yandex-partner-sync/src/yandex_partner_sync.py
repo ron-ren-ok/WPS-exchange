@@ -25,6 +25,7 @@ FIELDS = (
     "msetupstatistics_setups", "default_fixed_partner_reward_metric",
 )
 MAX_ATTEMPTS = 4
+PROFILE_NAMES = ("popup", "bubble", "uninstall")
 
 
 def http_status(exc):
@@ -109,6 +110,15 @@ def load_profile(name):
     if profile.get("status") != "active" or required - set(profile):
         raise RuntimeError(f"invalid or inactive {name} profile")
     contract = {key: profile[key] for key in ("profile_id", "version", "template", "country_id", "country_name", "pack_ids")}
+    if "vid_filter" in profile:
+        vid_filter = profile["vid_filter"]
+        if vid_filter.get("operation") not in ("1", "2") or not vid_filter.get("values") or any(not re.fullmatch(r"\d+", str(value)) for value in vid_filter["values"]):
+            raise RuntimeError(f"invalid {name} VID filter")
+        contract["vid_filter"] = vid_filter
+    if "allow_empty" in profile:
+        if not isinstance(profile["allow_empty"], bool):
+            raise RuntimeError(f"invalid {name} empty-data policy")
+        contract["allow_empty"] = profile["allow_empty"]
     if digest(contract) != profile["filter_fingerprint"]:
         raise RuntimeError(f"{name} profile fingerprint mismatch")
     template = ROOT / "config" / "yandex-api-blocks-template.json"
@@ -144,6 +154,12 @@ def build_blocks(profile, start, end):
         "default_constructor_field_pack_id_operation": "1", "default_constructor_field_pack_id": ",".join(map(str, profile["pack_ids"])),
     }
     wanted = {"msetupstatistics_setups", "default_fixed_partner_reward_metric"}
+    vid_filter = profile.get("vid_filter")
+    values.update({
+        "default_constructor_field_vid_group": bool(vid_filter),
+        "default_constructor_field_vid_operation": vid_filter["operation"] if vid_filter else "1",
+        "default_constructor_field_vid": ",".join(map(str, vid_filter["values"])) if vid_filter else "",
+    })
     for field in walk(blocks):
         field_id = field.get("id")
         if field_id in values:
@@ -191,12 +207,22 @@ def fetch_daily(profile, start, end, token):
             raise RuntimeError("Yandex response has an unexpected country")
         if int(row["default_field_pack_id"]) not in set(profile["pack_ids"]):
             raise RuntimeError("Yandex response has an unexpected pack ID")
+        vid_filter = profile.get("vid_filter")
+        if vid_filter:
+            if "default_field_vid" not in row:
+                raise RuntimeError("Yandex response is missing VID; cannot separate surfaces")
+            included = str(row["default_field_vid"]).strip() in set(map(str, vid_filter["values"]))
+            if included != (vid_filter["operation"] == "1"):
+                raise RuntimeError("Yandex response has an unexpected VID")
         day = parse_day(row["default_field_dt"])
         if not start <= day <= end:
             raise RuntimeError(f"Yandex response date outside requested range: {day}")
         totals[day][0] += scalar(row["msetupstatistics_setups"])
         totals[day][1] += scalar(row["default_fixed_partner_reward_metric"])
     reported_days = set(totals)
+    if not totals and profile.get("allow_empty", False):
+        print(f"Yandex {profile['surface']}: no source data; skipping without filling zeros.")
+        return {}
     source_start = validate_source_coverage(totals, start, end)
     if source_start > start:
         print(f"Yandex source has no historical data before {source_start}; skipping that leading interval.")
@@ -406,7 +432,7 @@ def main():
     start, end = requested_dates(args.start_date, args.end_date)
     service = google_service(service_json)
     headers, rows = sheet_rows(service)
-    profiles = [load_profile(name) for name in ("popup", "bubble")]
+    profiles = [load_profile(name) for name in PROFILE_NAMES]
     source_by_profile = {profile["profile_id"]: fetch_daily(profile, start, end, token) for profile in profiles}
     updates, appends, overwrites = [], [], []
     for profile in profiles:
