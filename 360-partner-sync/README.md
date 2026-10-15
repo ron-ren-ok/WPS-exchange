@@ -1,5 +1,7 @@
 # 360 Partner Sync
 
+Google Sheets 内运行的版本见 [Apps Script 部署说明](apps-script/README.md)。代码由 GitHub 管理，定时执行由 Apps Script 负责；迁移完成后需关闭旧 GitHub 定时任务。
+
 每天从源表 [360&WPS换量合作](https://docs.google.com/spreadsheets/d/1fHVgG5EnrSR-BXOsQxmNbIM_fk88qwTHe8u-gkxsFvw/edit?usp=sharing) 的「每日」读取 360 新增数据，并写入目标表「合作方新增血量」长表。
 
 | 源表头 | 运营位 | 写入字段 |
